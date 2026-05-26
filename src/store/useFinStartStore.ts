@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware'
 
 // ============================================================
 // TYPE DEFINITIONS
-// These describe the shape of every piece of data in the app
 // ============================================================
 
 export type HouseholdType = 'single_person' | 'single_income' | 'dual_income'
@@ -11,21 +10,50 @@ export type FilingStatus = 'single' | 'married_jointly' | 'married_separately'
 export type EmploymentType = 'salaried' | 'hourly' | 'self_employed' | 'commission'
 export type PayFrequency = 'weekly' | 'biweekly' | 'semi_monthly' | 'monthly'
 export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual' | 'one_time'
+export type RetirementAccountType = 'traditional' | 'roth' | 'both'
 
-// --- Earner ---
+// --- Pre-tax deductions ---
 export interface PreTaxDeductions {
-  retirement401k_percent: number
-  retirement401k_dollar: number
+  // 401k
+  retirement_type: RetirementAccountType
+  retirement401k_traditional_percent: number
+  retirement401k_roth_percent: number
   employer_match_percent: number
   employer_match_up_to_percent: number
+  // Insurance
   health_insurance: number
   dental: number
   vision: number
+  // HSA / FSA
+  has_hsa: boolean
   hsa: number
+  has_fsa: boolean
   fsa: number
+  // Other
   other_pretax: number
 }
 
+// --- Post-tax deductions ---
+export interface PostTaxDeductions {
+  other_posttax: number
+}
+
+// --- Bonus ---
+export interface BonusInfo {
+  has_bonus: boolean
+  gross_annual_bonus: number
+}
+
+// --- Pension ---
+export interface PensionInfo {
+  has_pension: boolean
+  first_contribution_year: number
+  employee_contribution_percent: number
+  employer_contribution_percent: number
+  benefit_multiplier_percent: number
+}
+
+// --- Earner ---
 export interface AdditionalIncomeSource {
   id: string
   label: string
@@ -37,14 +65,17 @@ export interface Earner {
   id: string
   label: string
   date_of_birth: string
+  first_year_of_work: number
   employment_type: EmploymentType
   gross_annual_salary: number
   hourly_rate: number
   hours_per_week: number
   pay_frequency: PayFrequency
-  bonus_amount: number
-  bonus_frequency: Frequency
+  bonus: BonusInfo
   pre_tax_deductions: PreTaxDeductions
+  post_tax_deductions: PostTaxDeductions
+  deductions_complete: boolean
+  pension: PensionInfo
   target_retirement_age: number
   additional_income: AdditionalIncomeSource[]
 }
@@ -66,12 +97,22 @@ export interface Subscription {
   category: string
 }
 
+export interface DebtPayment {
+  id: string
+  label: string
+  minimum_payment: number
+  balance: number
+  interest_rate: number
+  type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
+}
+
 export interface FixedExpenses {
   housing: number
   utilities: number
   internet_phone: number
   insurance: number
   subscriptions: Subscription[]
+  subscriptions_total_override: number
   childcare_education: number
   custom_fixed: ExpenseLineItem[]
   debt_payments: DebtPayment[]
@@ -90,16 +131,6 @@ export interface VariableExpenses {
   pet_care: number
   home_maintenance: number
   custom_variable: ExpenseLineItem[]
-}
-
-// --- Debt ---
-export interface DebtPayment {
-  id: string
-  label: string
-  minimum_payment: number
-  balance: number
-  interest_rate: number
-  type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
 }
 
 // --- Savings ---
@@ -140,6 +171,7 @@ export interface ForecastAssumptions {
   inflation_rate: number
   salary_growth_rate: number
   investment_return_rate: number
+  withdrawal_rate: number
   forecast_end_age: number
 }
 
@@ -165,30 +197,17 @@ export interface ActiveModules {
 
 // --- Root State ---
 export interface FinStartState {
-  // Household
   household_type: HouseholdType
   filing_status: FilingStatus
   state_of_residence: string
   number_of_dependents: number
-
-  // Income
   earners: Earner[]
-
-  // Expenses
   fixed_expenses: FixedExpenses
   variable_expenses: VariableExpenses
-
-  // Savings
   savings_and_investments: SavingsAndInvestments
-
-  // Balance Sheet
   assets: Asset[]
   liabilities: Liability[]
-
-  // Forecast
   forecast_assumptions: ForecastAssumptions
-
-  // Modules
   active_modules: ActiveModules
   module_data: Record<string, unknown>
 
@@ -200,6 +219,7 @@ export interface FinStartState {
   addEarner: (earner: Earner) => void
   updateEarner: (id: string, updates: Partial<Earner>) => void
   removeEarner: (id: string) => void
+  removeSecondEarner: () => void
   updateFixedExpenses: (updates: Partial<FixedExpenses>) => void
   updateVariableExpenses: (updates: Partial<VariableExpenses>) => void
   addSubscription: (subscription: Subscription) => void
@@ -225,34 +245,60 @@ export interface FinStartState {
 
 // ============================================================
 // DEFAULT VALUES
-// What the app looks like before any user input
 // ============================================================
 
-const defaultEarner: Earner = {
-  id: 'earner_1',
-  label: 'Person 1',
-  date_of_birth: '',
-  employment_type: 'salaried',
-  gross_annual_salary: 0,
-  hourly_rate: 0,
-  hours_per_week: 40,
-  pay_frequency: 'biweekly',
-  bonus_amount: 0,
-  bonus_frequency: 'annual',
-  pre_tax_deductions: {
-    retirement401k_percent: 0,
-    retirement401k_dollar: 0,
-    employer_match_percent: 0,
-    employer_match_up_to_percent: 0,
-    health_insurance: 0,
-    dental: 0,
-    vision: 0,
-    hsa: 0,
-    fsa: 0,
-    other_pretax: 0,
-  },
-  target_retirement_age: 65,
-  additional_income: [],
+export const defaultPreTaxDeductions: PreTaxDeductions = {
+  retirement_type: 'traditional',
+  retirement401k_traditional_percent: 0,
+  retirement401k_roth_percent: 0,
+  employer_match_percent: 0,
+  employer_match_up_to_percent: 100,
+  health_insurance: 0,
+  dental: 0,
+  vision: 0,
+  has_hsa: false,
+  hsa: 0,
+  has_fsa: false,
+  fsa: 0,
+  other_pretax: 0,
+}
+
+export const defaultPostTaxDeductions: PostTaxDeductions = {
+  other_posttax: 0,
+}
+
+export const defaultBonus: BonusInfo = {
+  has_bonus: false,
+  gross_annual_bonus: 0,
+}
+
+export const defaultPension: PensionInfo = {
+  has_pension: false,
+  first_contribution_year: new Date().getFullYear(),
+  employee_contribution_percent: 0,
+  employer_contribution_percent: 0,
+  benefit_multiplier_percent: 1.0,
+}
+
+export function createDefaultEarner(id: string, label: string): Earner {
+  return {
+    id,
+    label,
+    date_of_birth: '',
+    first_year_of_work: new Date().getFullYear(),
+    employment_type: 'salaried',
+    gross_annual_salary: 0,
+    hourly_rate: 0,
+    hours_per_week: 40,
+    pay_frequency: 'biweekly',
+    bonus: { ...defaultBonus },
+    pre_tax_deductions: { ...defaultPreTaxDeductions },
+    post_tax_deductions: { ...defaultPostTaxDeductions },
+    deductions_complete: false,
+    pension: { ...defaultPension },
+    target_retirement_age: 65,
+    additional_income: [],
+  }
 }
 
 const defaultFixedExpenses: FixedExpenses = {
@@ -261,6 +307,7 @@ const defaultFixedExpenses: FixedExpenses = {
   internet_phone: 0,
   insurance: 0,
   subscriptions: [],
+  subscriptions_total_override: 0,
   childcare_education: 0,
   custom_fixed: [],
   debt_payments: [],
@@ -292,23 +339,22 @@ const defaultForecastAssumptions: ForecastAssumptions = {
   inflation_rate: 3.0,
   salary_growth_rate: 3.5,
   investment_return_rate: 7.0,
+  withdrawal_rate: 4.0,
   forecast_end_age: 95,
 }
 
 // ============================================================
 // THE STORE
-// This is the actual shared memory of the application
 // ============================================================
 
 export const useFinStartStore = create<FinStartState>()(
   persist(
     (set) => ({
-      // Initial state
       household_type: 'single_person',
       filing_status: 'single',
       state_of_residence: '',
       number_of_dependents: 0,
-      earners: [defaultEarner],
+      earners: [createDefaultEarner('earner_1', 'Person 1')],
       fixed_expenses: defaultFixedExpenses,
       variable_expenses: defaultVariableExpenses,
       savings_and_investments: defaultSavings,
@@ -318,29 +364,37 @@ export const useFinStartStore = create<FinStartState>()(
       active_modules: {},
       module_data: {},
 
-      // Actions
       setHouseholdType: (type) => set({ household_type: type }),
       setFilingStatus: (status) => set({ filing_status: status }),
       setStateOfResidence: (state) => set({ state_of_residence: state }),
-      setNumberOfDependents: (count) => set({ number_of_dependents: count }),
+      setNumberOfDependents: (count) =>
+        set({ number_of_dependents: count }),
 
       addEarner: (earner) =>
         set((state) => ({ earners: [...state.earners, earner] })),
+
       updateEarner: (id, updates) =>
         set((state) => ({
           earners: state.earners.map((e) =>
             e.id === id ? { ...e, ...updates } : e
           ),
         })),
+
       removeEarner: (id) =>
         set((state) => ({
           earners: state.earners.filter((e) => e.id !== id),
+        })),
+
+      removeSecondEarner: () =>
+        set((state) => ({
+          earners: state.earners.slice(0, 1),
         })),
 
       updateFixedExpenses: (updates) =>
         set((state) => ({
           fixed_expenses: { ...state.fixed_expenses, ...updates },
         })),
+
       updateVariableExpenses: (updates) =>
         set((state) => ({
           variable_expenses: { ...state.variable_expenses, ...updates },
@@ -356,6 +410,7 @@ export const useFinStartStore = create<FinStartState>()(
             ],
           },
         })),
+
       updateSubscription: (id, updates) =>
         set((state) => ({
           fixed_expenses: {
@@ -365,6 +420,7 @@ export const useFinStartStore = create<FinStartState>()(
             ),
           },
         })),
+
       removeSubscription: (id) =>
         set((state) => ({
           fixed_expenses: {
@@ -382,6 +438,7 @@ export const useFinStartStore = create<FinStartState>()(
             custom_fixed: [...state.fixed_expenses.custom_fixed, item],
           },
         })),
+
       removeCustomFixedExpense: (id) =>
         set((state) => ({
           fixed_expenses: {
@@ -402,6 +459,7 @@ export const useFinStartStore = create<FinStartState>()(
             ],
           },
         })),
+
       removeCustomVariableExpense: (id) =>
         set((state) => ({
           variable_expenses: {
@@ -419,6 +477,7 @@ export const useFinStartStore = create<FinStartState>()(
             ...updates,
           },
         })),
+
       addSavingsGoal: (goal) =>
         set((state) => ({
           savings_and_investments: {
@@ -429,37 +488,45 @@ export const useFinStartStore = create<FinStartState>()(
             ],
           },
         })),
+
       removeSavingsGoal: (id) =>
         set((state) => ({
           savings_and_investments: {
             ...state.savings_and_investments,
-            savings_goals: state.savings_and_investments.savings_goals.filter(
-              (g) => g.id !== id
-            ),
+            savings_goals:
+              state.savings_and_investments.savings_goals.filter(
+                (g) => g.id !== id
+              ),
           },
         })),
 
       addAsset: (asset) =>
         set((state) => ({ assets: [...state.assets, asset] })),
+
       updateAsset: (id, updates) =>
         set((state) => ({
           assets: state.assets.map((a) =>
             a.id === id ? { ...a, ...updates } : a
           ),
         })),
+
       removeAsset: (id) =>
         set((state) => ({
           assets: state.assets.filter((a) => a.id !== id),
         })),
 
       addLiability: (liability) =>
-        set((state) => ({ liabilities: [...state.liabilities, liability] })),
+        set((state) => ({
+          liabilities: [...state.liabilities, liability],
+        })),
+
       updateLiability: (id, updates) =>
         set((state) => ({
           liabilities: state.liabilities.map((l) =>
             l.id === id ? { ...l, ...updates } : l
           ),
         })),
+
       removeLiability: (id) =>
         set((state) => ({
           liabilities: state.liabilities.filter((l) => l.id !== id),
