@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import StepHousehold from '@/components/onboarding/StepHousehold'
 import StepPrimaryIncome from '@/components/onboarding/StepPrimaryIncome'
 import StepPartnerIncome from '@/components/onboarding/StepPartnerIncome'
-import StepExpenses from '@/components/onboarding/StepExpenses'
 import StepForecast from '@/components/onboarding/StepForecast'
 import { useFinStartStore } from '@/store/useFinStartStore'
 import { useRouter } from 'next/navigation'
@@ -14,7 +13,6 @@ const STEPS = [
   { id: 'household', title: 'Your Household' },
   { id: 'primary_income', title: 'Your Income' },
   { id: 'partner_income', title: 'Partner Income' },
-  { id: 'expenses', title: 'Your Expenses' },
   { id: 'forecast', title: 'Final Settings' },
 ]
 
@@ -38,7 +36,6 @@ export default function OnboardingPage() {
   const totalSteps = visibleSteps.length
   const progress = ((currentStep + 1) / totalSteps) * 100
 
-  // Scroll to top of content on every step change
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTo({ top: 0, behavior: 'smooth' })
@@ -81,8 +78,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-[var(--background)] flex flex-col">
-
-      {/* Sticky header — always visible while scrolling */}
+      {/* Sticky header */}
       <div className="sticky top-0 z-50 bg-[var(--background)] border-b border-[var(--border)] px-6 pt-5 pb-4">
         <div className="max-w-xl mx-auto">
           <div className="flex items-center justify-between mb-3">
@@ -93,7 +89,6 @@ export default function OnboardingPage() {
               Step {currentStep + 1} of {totalSteps}
             </span>
           </div>
-          {/* Progress bar */}
           <div className="h-1.5 w-full bg-[var(--muted)] rounded-full overflow-hidden">
             <motion.div
               className="h-full bg-[var(--primary)] rounded-full"
@@ -110,11 +105,8 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Scrollable content area */}
-      <div
-        ref={contentRef}
-        className="flex-1 overflow-y-auto"
-      >
+      {/* Scrollable content */}
+      <div ref={contentRef} className="flex-1 overflow-y-auto">
         <div className="flex items-start justify-center px-6 py-8">
           <div className="w-full max-w-xl">
             <AnimatePresence mode="wait" custom={direction}>
@@ -135,9 +127,6 @@ export default function OnboardingPage() {
                 )}
                 {currentStepId === 'partner_income' && (
                   <StepPartnerIncome onNext={goNext} onBack={goBack} />
-                )}
-                {currentStepId === 'expenses' && (
-                  <StepExpenses onNext={goNext} onBack={goBack} />
                 )}
                 {currentStepId === 'forecast' && (
                   <StepForecast onNext={goNext} onBack={goBack} />

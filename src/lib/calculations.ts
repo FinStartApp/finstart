@@ -655,9 +655,6 @@ export function calculateForecast(
     const is_retirement_year_earner2 =
       earner2_age !== null && earner2_age === earner2_retirement_age
 
-    const income_multiplier = Math.pow(
-      1 + assumptions.salary_growth_rate / 100, i
-    )
     const expense_multiplier = Math.pow(
       1 + assumptions.inflation_rate / 100, i
     )
@@ -672,9 +669,33 @@ export function calculateForecast(
       pension_income_monthly = pension_monthly
       net_income = withdrawal_annual + pension_monthly * 12
     } else {
-      net_income = pl.total_take_home * 12 * income_multiplier
-      if (earner1_retired && earners.length > 1) net_income *= 0.6
-      else if (earner2_retired && earners.length > 1) net_income *= 0.6
+      // Apply each earner's individual salary growth rate
+      const earner1_calc = calculateEarner(earners[0], state_code)
+      const earner1_multiplier = Math.pow(
+        1 + (earners[0]?.salary_growth_rate ?? 3.5) / 100, i
+      )
+      let projected_income =
+        earner1_calc.net_monthly_take_home * 12 * earner1_multiplier
+
+      if (earners.length > 1 && !earner2_retired) {
+        const earner2_calc = calculateEarner(earners[1], state_code)
+        const earner2_multiplier = Math.pow(
+          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100, i
+        )
+        projected_income +=
+          earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
+      }
+
+      if (earner1_retired && earners.length > 1) {
+        const earner2_calc = calculateEarner(earners[1], state_code)
+        const earner2_multiplier = Math.pow(
+          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100, i
+        )
+        projected_income =
+          earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
+      }
+
+      net_income = projected_income
     }
 
     const total_expenses = pl.total_expenses * 12 * expense_multiplier

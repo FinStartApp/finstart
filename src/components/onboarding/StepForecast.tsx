@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useFinStartStore } from '@/store/useFinStartStore'
 
 interface Props {
@@ -7,7 +8,7 @@ interface Props {
   onBack: () => void
 }
 
-interface SliderFieldProps {
+interface SliderWithInputProps {
   label: string
   hint: string
   value: number
@@ -18,7 +19,7 @@ interface SliderFieldProps {
   format: (value: number) => string
 }
 
-function SliderField({
+function SliderWithInput({
   label,
   hint,
   value,
@@ -27,7 +28,30 @@ function SliderField({
   step,
   onChange,
   format,
-}: SliderFieldProps) {
+}: SliderWithInputProps) {
+  const [inputValue, setInputValue] = useState(String(value))
+
+  useEffect(() => {
+    setInputValue(String(value))
+  }, [value])
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value
+    setInputValue(raw)
+    const parsed = parseFloat(raw)
+    if (!isNaN(parsed)) onChange(parsed)
+  }
+
+  function handleBlur() {
+    const parsed = parseFloat(inputValue)
+    if (isNaN(parsed)) {
+      setInputValue(String(value))
+    } else {
+      setInputValue(String(parsed))
+      onChange(parsed)
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-baseline justify-between">
@@ -39,28 +63,40 @@ function SliderField({
             {hint}
           </p>
         </div>
-        <span className="text-lg font-bold text-[var(--primary)] ml-4 flex-shrink-0">
-          {format(value)}
-        </span>
       </div>
-      <div className="relative">
+      <div className="flex items-center gap-3">
         <input
           type="range"
           min={min}
           max={max}
           step={step}
-          value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none cursor-pointer bg-[var(--muted)] accent-[var(--primary)]"
+          value={Math.min(Math.max(value, min), max)}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value)
+            onChange(val)
+            setInputValue(String(val))
+          }}
+          className="flex-1 h-2 rounded-full appearance-none cursor-pointer bg-[var(--muted)] accent-[var(--primary)]"
         />
-        <div className="flex justify-between mt-1">
-          <span className="text-xs text-[var(--muted-foreground)]">
-            {format(min)}
-          </span>
-          <span className="text-xs text-[var(--muted-foreground)]">
-            {format(max)}
-          </span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <input
+            type="number"
+            value={inputValue}
+            step={step}
+            onChange={handleInputChange}
+            onBlur={handleBlur}
+            className="w-16 px-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] text-sm text-center focus:outline-none focus:border-[var(--primary)] transition-all"
+          />
+          <span className="text-xs text-[var(--muted-foreground)]">%</span>
         </div>
+      </div>
+      <div className="flex justify-between -mt-1">
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {format(min)}
+        </span>
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {format(max)}
+        </span>
       </div>
     </div>
   )
@@ -97,7 +133,7 @@ export default function StepForecast({ onNext, onBack }: Props) {
 
       {/* Sliders */}
       <div className="space-y-6 bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5">
-        <SliderField
+        <SliderWithInput
           label="Inflation Rate"
           hint="Expected annual rise in the cost of living"
           value={forecast_assumptions.inflation_rate}
@@ -112,22 +148,7 @@ export default function StepForecast({ onNext, onBack }: Props) {
 
         <div className="h-px bg-[var(--border)]" />
 
-        <SliderField
-          label="Salary Growth Rate"
-          hint="Expected annual increase in your income"
-          value={forecast_assumptions.salary_growth_rate}
-          min={0}
-          max={8}
-          step={0.1}
-          onChange={(v) =>
-            updateForecastAssumptions({ salary_growth_rate: v })
-          }
-          format={(v) => `${v.toFixed(1)}%`}
-        />
-
-        <div className="h-px bg-[var(--border)]" />
-
-        <SliderField
+        <SliderWithInput
           label="Investment Return Rate"
           hint="Expected annual return on savings and investments"
           value={forecast_assumptions.investment_return_rate}
@@ -136,6 +157,21 @@ export default function StepForecast({ onNext, onBack }: Props) {
           step={0.1}
           onChange={(v) =>
             updateForecastAssumptions({ investment_return_rate: v })
+          }
+          format={(v) => `${v.toFixed(1)}%`}
+        />
+
+        <div className="h-px bg-[var(--border)]" />
+
+        <SliderWithInput
+          label="Retirement Withdrawal Rate"
+          hint="Annual % of retirement savings you'll spend in retirement. 4% is the widely accepted safe withdrawal rate."
+          value={forecast_assumptions.withdrawal_rate}
+          min={2}
+          max={8}
+          step={0.1}
+          onChange={(v) =>
+            updateForecastAssumptions({ withdrawal_rate: v })
           }
           format={(v) => `${v.toFixed(1)}%`}
         />

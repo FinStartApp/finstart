@@ -76,6 +76,9 @@ export interface Earner {
   post_tax_deductions: PostTaxDeductions
   deductions_complete: boolean
   pension: PensionInfo
+  balance_401k_traditional: number
+  balance_401k_roth: number
+  salary_growth_rate: number
   target_retirement_age: number
   additional_income: AdditionalIncomeSource[]
 }
@@ -169,7 +172,6 @@ export interface Liability {
 // --- Forecast ---
 export interface ForecastAssumptions {
   inflation_rate: number
-  salary_growth_rate: number
   investment_return_rate: number
   withdrawal_rate: number
   forecast_end_age: number
@@ -296,6 +298,9 @@ export function createDefaultEarner(id: string, label: string): Earner {
     post_tax_deductions: { ...defaultPostTaxDeductions },
     deductions_complete: false,
     pension: { ...defaultPension },
+    balance_401k_traditional: 0,
+    balance_401k_roth: 0,
+    salary_growth_rate: 3.5,
     target_retirement_age: 65,
     additional_income: [],
   }
@@ -337,7 +342,6 @@ const defaultSavings: SavingsAndInvestments = {
 
 const defaultForecastAssumptions: ForecastAssumptions = {
   inflation_rate: 3.0,
-  salary_growth_rate: 3.5,
   investment_return_rate: 7.0,
   withdrawal_rate: 4.0,
   forecast_end_age: 95,
