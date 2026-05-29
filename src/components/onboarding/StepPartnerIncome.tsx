@@ -462,18 +462,25 @@ export default function StepPartnerIncome({ onNext, onBack }: Props) {
                   className="rounded"
                 />
                 <span className="text-sm font-medium text-[var(--foreground)]">
-                  Partner contributes to an HSA
+                  Partner contributes to an HSA through my paycheck
                 </span>
                 <span className="text-xs text-[var(--muted-foreground)]">
                   (Health Savings Account — pre-tax)
                 </span>
               </label>
               {d.has_hsa && (
-                <CurrencyInput
-                  value={d.hsa}
-                  onChange={(val) => updateDeduction('hsa', val)}
-                  placeholder="Per paycheck amount"
-                />
+                <div className="space-y-1.5">
+                  <CurrencyInput
+                    value={d.hsa}
+                    onChange={(val) => updateDeduction('hsa', val)}
+                    placeholder="Per paycheck amount"
+                  />
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Paycheck deductions only. If you transfer to your HSA
+                    directly from your bank, do not include that here —
+                    add it under Expenses instead to avoid double counting.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -489,18 +496,24 @@ export default function StepPartnerIncome({ onNext, onBack }: Props) {
                   className="rounded"
                 />
                 <span className="text-sm font-medium text-[var(--foreground)]">
-                  Partner contributes to an FSA
+                  Partner contributes to an FSA through my paycheck
                 </span>
                 <span className="text-xs text-[var(--muted-foreground)]">
                   (Flexible Spending Account — pre-tax)
                 </span>
               </label>
               {d.has_fsa && (
-                <CurrencyInput
-                  value={d.fsa}
-                  onChange={(val) => updateDeduction('fsa', val)}
-                  placeholder="Per paycheck amount"
-                />
+                <div className="space-y-1.5">
+                  <CurrencyInput
+                    value={d.fsa}
+                    onChange={(val) => updateDeduction('fsa', val)}
+                    placeholder="Per paycheck amount"
+                  />
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Paycheck deductions only. FSA funds are use-it-or-lose-it
+                    — only include what comes out of your paycheck here.
+                  </p>
+                </div>
               )}
             </div>
 

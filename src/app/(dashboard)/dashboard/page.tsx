@@ -5,6 +5,7 @@ import {
   calculateMonthlyPL,
   calculateBalanceSheet,
   calculateHouseholdIncome,
+  calculateEarner,
   formatCurrency,
   formatPercent,
 } from '@/lib/calculations'
@@ -16,6 +17,7 @@ import {
   ChevronRight,
   Plus,
   Pencil,
+  ChevronDown,
 } from 'lucide-react'
 import { useState } from 'react'
 import Link from 'next/link'
@@ -23,6 +25,7 @@ import Link from 'next/link'
 export default function DashboardPage() {
   const [warningDismissed, setWarningDismissed] = useState(false)
   const [incomeHovered, setIncomeHovered] = useState(false)
+  const [taxExpanded, setTaxExpanded] = useState<Record<string, boolean>>({})
 
   const {
     earners,
@@ -32,6 +35,7 @@ export default function DashboardPage() {
     assets,
     liabilities,
     state_of_residence,
+    filing_status,
   } = useFinStartStore()
 
   const pl = calculateMonthlyPL(
@@ -39,11 +43,16 @@ export default function DashboardPage() {
     fixed_expenses,
     variable_expenses,
     savings_and_investments,
-    state_of_residence
+    state_of_residence,
+    filing_status
   )
 
   const bs = calculateBalanceSheet(assets, liabilities)
-  const income = calculateHouseholdIncome(earners, state_of_residence)
+  const income = calculateHouseholdIncome(
+    earners,
+    state_of_residence,
+    filing_status
+  )
 
   const hasIncome = earners.some(
     (e) => e.gross_annual_salary > 0 || e.hourly_rate > 0
@@ -80,6 +89,13 @@ export default function DashboardPage() {
       : 0
 
   const cashFlowPositive = pl.net_cash_flow >= 0
+
+  function toggleTax(earnerId: string) {
+    setTaxExpanded((prev) => ({
+      ...prev,
+      [earnerId]: !prev[earnerId],
+    }))
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
@@ -190,12 +206,16 @@ export default function DashboardPage() {
       {/* Three summary cards */}
       <div className="grid grid-cols-3 gap-4">
 
-        {/* Income card */}
+        {/* Income card with hover popover */}
         <div
-          className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 relative"
+          className="relative"
           onMouseEnter={() => setIncomeHovered(true)}
-          onMouseLeave={() => setIncomeHovered(false)}
+          onMouseLeave={() => {
+            setIncomeHovered(false)
+            setTaxExpanded({})
+          }}
         >
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 relative">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -263,57 +283,112 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Income hover popover */}
+          {/* Hover popover — real calculations */}
           {incomeHovered && hasIncome && (
-            <div className="absolute left-full top-0 ml-3 w-72 bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 z-50">
+            <div className="absolute left-full top-0 w-80 pl-3 z-50">
+            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4">
               <p className="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider mb-3">
                 Paycheck breakdown
               </p>
               {earners.map((earner) => {
-                const grossMonthly =
-                  earner.employment_type === 'hourly'
-                    ? (earner.hourly_rate * earner.hours_per_week * 52) / 12
-                    : earner.gross_annual_salary / 12
+                const calc = calculateEarner(
+                  earner,
+                  state_of_residence,
+                  filing_status
+                )
+                const isExpanded = taxExpanded[earner.id]
                 return (
-                  <div key={earner.id} className="mb-3 last:mb-0">
-                    <p className="text-xs font-medium text-[var(--foreground)] mb-1.5">
+                  <div key={earner.id} className="mb-4 last:mb-0">
+                    <p className="text-xs font-semibold text-[var(--foreground)] mb-2">
                       {earner.label}
                     </p>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex justify-between">
                         <span className="text-xs text-[var(--muted-foreground)]">Gross</span>
-                        <span className="text-xs text-[var(--foreground)]">{formatCurrency(grossMonthly)}</span>
+                        <span className="text-xs font-medium text-[var(--foreground)]">{formatCurrency(calc.gross_monthly)}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs text-[var(--muted-foreground)]">Pre-tax deductions</span>
-                        <span className="text-xs text-red-500">-{formatCurrency(
-                          earner.pre_tax_deductions.health_insurance +
-                          earner.pre_tax_deductions.dental +
-                          earner.pre_tax_deductions.vision +
-                          (earner.pre_tax_deductions.has_hsa ? earner.pre_tax_deductions.hsa : 0) +
-                          (earner.pre_tax_deductions.has_fsa ? earner.pre_tax_deductions.fsa : 0) +
-                          earner.pre_tax_deductions.other_pretax
-                        )}</span>
+                      {calc.pretax_deductions_monthly > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[var(--muted-foreground)]">Pre-tax deductions</span>
+                          <span className="text-xs text-red-500">-{formatCurrency(calc.pretax_deductions_monthly)}</span>
+                        </div>
+                      )}
+                      {(calc.total_401k_traditional_annual + calc.total_401k_roth_annual) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[var(--muted-foreground)]">401(k)</span>
+                          <span className="text-xs text-red-500">-{formatCurrency((calc.total_401k_traditional_annual + calc.total_401k_roth_annual) / 12)}</span>
+                        </div>
+                      )}
+                      {calc.pension_contribution_monthly > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[var(--muted-foreground)]">Pension contribution</span>
+                          <span className="text-xs text-red-500">-{formatCurrency(calc.pension_contribution_monthly)}</span>
+                        </div>
+                      )}
+                      {calc.posttax_deductions_monthly > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[var(--muted-foreground)]">Post-tax deductions</span>
+                          <span className="text-xs text-red-500">-{formatCurrency(calc.posttax_deductions_monthly)}</span>
+                        </div>
+                      )}
+
+                      {/* Tax section with expand toggle */}
+                      <div>
+                        <button
+                          onClick={() => toggleTax(earner.id)}
+                          className="flex items-center justify-between w-full"
+                        >
+                          <span className="text-xs text-[var(--muted-foreground)]">
+                            Est. taxes
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-red-500">
+                              -{formatCurrency(calc.tax_breakdown.total_tax_monthly)}
+                            </span>
+                            <ChevronDown
+                              size={11}
+                              className={`text-[var(--muted-foreground)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-1 ml-3 space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                Federal ({calc.gross_monthly > 0 ? ((calc.tax_breakdown.federal_tax_monthly / calc.gross_monthly) * 100).toFixed(1) : '0.0'}%)
+                              </span>
+                              <span className="text-xs text-red-400">-{formatCurrency(calc.tax_breakdown.federal_tax_monthly)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                State ({state_of_residence || 'N/A'}) ({calc.gross_monthly > 0 ? ((calc.tax_breakdown.state_tax_monthly / calc.gross_monthly) * 100).toFixed(1) : '0.0'}%)
+                              </span>
+                              <span className="text-xs text-red-400">-{formatCurrency(calc.tax_breakdown.state_tax_monthly)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-[var(--muted-foreground)]">Social Security (6.2%)</span>
+                              <span className="text-xs text-red-400">-{formatCurrency(calc.tax_breakdown.social_security_monthly)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-[var(--muted-foreground)]">Medicare (1.45%)</span>
+                              <span className="text-xs text-red-400">-{formatCurrency(calc.tax_breakdown.medicare_monthly)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs text-[var(--muted-foreground)]">401(k)</span>
-                        <span className="text-xs text-red-500">-{formatCurrency(
-                          (grossMonthly * earner.pre_tax_deductions.retirement401k_traditional_percent / 100) +
-                          (grossMonthly * earner.pre_tax_deductions.retirement401k_roth_percent / 100)
-                        )}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-xs text-[var(--muted-foreground)]">Est. taxes</span>
-                        <span className="text-xs text-red-500">-{formatCurrency(
-                          grossMonthly * 0.25
-                        )}</span>
+
+                      <div className="flex justify-between pt-1.5 border-t border-[var(--border)]">
+                        <span className="text-xs font-semibold text-[var(--foreground)]">Net take-home</span>
+                        <span className="text-xs font-bold text-emerald-600">{formatCurrency(calc.net_monthly_take_home)}</span>
                       </div>
                     </div>
                   </div>
                 )
               })}
             </div>
+            </div>
           )}
+        </div>
         </div>
 
         {/* Expenses card */}
@@ -330,7 +405,6 @@ export default function DashboardPage() {
               Edit
             </Link>
           </div>
-
           {!hasExpenses ? (
             <div className="space-y-3">
               <p className="text-sm text-[var(--muted-foreground)]">
