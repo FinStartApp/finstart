@@ -13,15 +13,15 @@
 // 1. Update TAX_YEAR
 // 2. Update FEDERAL_BRACKETS for new income thresholds
 // 3. Update STANDARD_DEDUCTION
-// 4. Update SS_WAGE_BASE
-// 5. Verify state rates haven't changed materially
+// 4. Update FICA.ss_wage_base
+// 5. Update FICA.additional_medicare_threshold_single and _married_jointly
+// 6. Verify state rates haven't changed materially
 // ============================================================
 
 export const TAX_YEAR = 2026
 
 // ============================================================
 // FEDERAL INCOME TAX — SINGLE FILER BRACKETS
-// Married filing jointly brackets are approximately double
 // ============================================================
 
 export interface TaxBracket {
@@ -32,22 +32,26 @@ export interface TaxBracket {
 }
 
 export const FEDERAL_BRACKETS_SINGLE_2026: TaxBracket[] = [
-  { min: 0,       max: 11925,   rate: 0.10, base_tax: 0 },
-  { min: 11925,   max: 48475,   rate: 0.12, base_tax: 1192.50 },
-  { min: 48475,   max: 103350,  rate: 0.22, base_tax: 5578.50 },
-  { min: 103350,  max: 197300,  rate: 0.24, base_tax: 17651.50 },
-  { min: 197300,  max: 250525,  rate: 0.32, base_tax: 40199.50 },
-  { min: 250525,  max: 626350,  rate: 0.35, base_tax: 57231.50 },
+  { min: 0,       max: 11925,    rate: 0.10, base_tax: 0 },
+  { min: 11925,   max: 48475,    rate: 0.12, base_tax: 1192.50 },
+  { min: 48475,   max: 103350,   rate: 0.22, base_tax: 5578.50 },
+  { min: 103350,  max: 197300,   rate: 0.24, base_tax: 17651.50 },
+  { min: 197300,  max: 250525,   rate: 0.32, base_tax: 40199.50 },
+  { min: 250525,  max: 626350,   rate: 0.35, base_tax: 57231.50 },
   { min: 626350,  max: Infinity, rate: 0.37, base_tax: 188769.75 },
 ]
 
+// ============================================================
+// FEDERAL INCOME TAX — MARRIED FILING JOINTLY BRACKETS
+// ============================================================
+
 export const FEDERAL_BRACKETS_MARRIED_JOINTLY_2026: TaxBracket[] = [
-  { min: 0,       max: 23850,   rate: 0.10, base_tax: 0 },
-  { min: 23850,   max: 96950,   rate: 0.12, base_tax: 2385.00 },
-  { min: 96950,   max: 206700,  rate: 0.22, base_tax: 11157.00 },
-  { min: 206700,  max: 394600,  rate: 0.24, base_tax: 35302.00 },
-  { min: 394600,  max: 501050,  rate: 0.32, base_tax: 80398.00 },
-  { min: 501050,  max: 751600,  rate: 0.35, base_tax: 114462.00 },
+  { min: 0,       max: 23850,    rate: 0.10, base_tax: 0 },
+  { min: 23850,   max: 96950,    rate: 0.12, base_tax: 2385.00 },
+  { min: 96950,   max: 206700,   rate: 0.22, base_tax: 11157.00 },
+  { min: 206700,  max: 394600,   rate: 0.24, base_tax: 35302.00 },
+  { min: 394600,  max: 501050,   rate: 0.32, base_tax: 80398.00 },
+  { min: 501050,  max: 751600,   rate: 0.35, base_tax: 114462.00 },
   { min: 751600,  max: Infinity, rate: 0.37, base_tax: 202154.50 },
 ]
 
@@ -64,13 +68,19 @@ export const STANDARD_DEDUCTION = {
 // ============================================================
 // FICA TAXES 2026
 // ============================================================
+// additional_medicare_rate: 0.9% surtax on earned income above threshold
+// Threshold differs by filing status — do NOT use a single number
+// Single / MFS: $200,000 | Married Filing Jointly: $250,000
+// ============================================================
 
 export const FICA = {
   ss_rate: 0.062,
   ss_wage_base: 176100,
   medicare_rate: 0.0145,
   additional_medicare_rate: 0.009,
-  additional_medicare_threshold: 200000,
+  additional_medicare_threshold_single: 200000,
+  additional_medicare_threshold_married_jointly: 250000,
+  additional_medicare_threshold_married_separately: 125000,
 }
 
 // ============================================================
@@ -83,7 +93,6 @@ export const BONUS_SUPPLEMENTAL_RATE = 0.22
 // ============================================================
 // STATE INCOME TAX RATES
 // Flat marginal rate estimates for planning purposes
-// Source: State revenue departments, 2026
 // Note: Some states use graduated brackets — these are
 // approximate effective rates for planning use
 // ============================================================

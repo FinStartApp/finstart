@@ -19,14 +19,14 @@ const STEPS = [
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(0)
   const [direction, setDirection] = useState(1)
-  const { filing_status, earners } = useFinStartStore()
+  const { household_type } = useFinStartStore()
   const router = useRouter()
   const contentRef = useRef<HTMLDivElement>(null)
 
-  const isDualIncome =
-    earners.length > 1 ||
-    filing_status === 'married_jointly' ||
-    filing_status === 'married_separately'
+  // Partner income step only appears when the household has two incomes.
+  // Filing status (MFJ, single, etc.) is a tax concept — it does NOT determine
+  // whether a second earner exists. MFJ + one income is valid and common.
+  const isDualIncome = household_type === 'dual_income'
 
   const visibleSteps = STEPS.filter((step) => {
     if (step.id === 'partner_income' && !isDualIncome) return false
