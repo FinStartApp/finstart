@@ -108,6 +108,8 @@ export interface DebtPayment {
   monthly_payment: number
   minimum_payment: number
   type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
+  start_month: number | null   // 1–12, null = ongoing (full year applies)
+  start_year: number | null    // 4-digit year, null = ongoing (full year applies)
 }
 
 // ============================================================

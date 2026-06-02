@@ -8,6 +8,7 @@ import type {
   ExpenseLineItem,
   SubscriptionGroup,
   MortgageData,
+  DebtPayment,
   ForecastAssumptions,
   FilingStatus,
 } from '@/store/useFinStartStore'
@@ -406,7 +407,7 @@ export function resolveLineItemMonthly(item: ExpenseLineItem): number {
 }
 
 // ============================================================
-// SUBSCRIPTION TOTALS — works on the new grouped structure
+// SUBSCRIPTION TOTALS
 // ============================================================
 
 export function calculateSubscriptionGroupsMonthly(
@@ -419,8 +420,11 @@ export function calculateSubscriptionGroupsMonthly(
   }, 0)
 }
 
-// Total monthly housing cost from mortgage — shown as linked line in Housing category
-// P&I + escrow taxes + escrow insurance + PMI
+// ============================================================
+// MORTGAGE
+// ============================================================
+
+// Total monthly housing cost — P&I + all escrow when active
 export function calculateMortgageMonthlyTotal(mortgage: MortgageData): number {
   if (!mortgage.is_active) return 0
   return (
@@ -431,14 +435,59 @@ export function calculateMortgageMonthlyTotal(mortgage: MortgageData): number {
   )
 }
 
-// Mortgage liability total — P&I only, for debt payoff and DTI calculations
+// P&I only — for debt payoff and DTI calculations
 export function calculateMortgagePIPayment(mortgage: MortgageData): number {
   if (!mortgage.is_active) return 0
   return mortgage.pi_payment
 }
 
 // ============================================================
-// EXPENSE TOTALS — updated for new category + line item structure
+// ANNUALIZED MONTHLY DEBT
+// ============================================================
+//
+// Converts a debt's monthly payment to an annualized monthly
+// average, consistent with how expense line items work via
+// the "by month" feature (12-month average).
+//
+// Logic:
+//   - null start date → ongoing debt, full payment applies
+//   - start_year before current year → full year applies
+//   - start_year === current year → prorate by months remaining
+//     Formula: payment × (13 − start_month) ÷ 12
+//     Example: July start (month 7) → payment × 6 ÷ 12
+//
+// This resets every Jan 1 — a loan that started July 2024
+// contributes 6/12 of its payment to 2024 cash flow,
+// then the full payment to all subsequent years.
+//
+export function annualizedMonthlyDebt(debt: DebtPayment): number {
+  const { monthly_payment, start_month, start_year } = debt
+
+  // No start date set — treat as ongoing, full payment applies
+  if (start_month === null || start_year === null) {
+    return monthly_payment
+  }
+
+  const current_year = new Date().getFullYear()
+
+  // Started before this year — full year applies
+  if (start_year < current_year) {
+    return monthly_payment
+  }
+
+  // Started this year — prorate by months active
+  if (start_year === current_year) {
+    const months_active = 13 - start_month  // July (7) → 6 months
+    return (monthly_payment * months_active) / 12
+  }
+
+  // Started in a future year — contributes nothing to current year
+  // (Edge case: user is entering a planned future debt)
+  return 0
+}
+
+// ============================================================
+// EXPENSE TOTALS
 // ============================================================
 
 export function calculateFixedExpensesMonthly(fixed: FixedExpenses): number {
@@ -454,14 +503,14 @@ export function calculateFixedExpensesMonthly(fixed: FixedExpenses): number {
     fixed.subscription_groups
   )
 
-  // Debt payments — uses actual monthly_payment (what user pays), not minimum
+  // Debt payments — annualized monthly average, consistent with line item model
+  // Uses start_month/start_year to prorate mid-year debts
   const debt_total = fixed.debt_payments.reduce(
-    (sum, d) => sum + d.monthly_payment,
+    (sum, d) => sum + annualizedMonthlyDebt(d),
     0
   )
 
-  // Mortgage — P&I + full escrow (taxes, insurance, PMI) when active
-  // Escrow fields feed cash flow only — debt payoff module uses pi_payment separately
+  // Mortgage — P&I + full escrow when active
   const mortgage_total = fixed.mortgage.is_active
     ? fixed.mortgage.pi_payment +
       fixed.mortgage.escrow_taxes +
@@ -634,7 +683,7 @@ export function calculateForecast(
   }, 0)
 
   const annual_roth_contribution = earners.reduce((sum, e) => {
-    return sum + (e.pre_tax_deductions.retirement401k_roth_percent / 100) * e.gross_annual_salary
+    return sum + (e.pre_tax_deductions.retirement401k_roth_percent) / 100 * e.gross_annual_salary
   }, 0)
 
   const pension_monthly = earners.reduce((sum, e) => {

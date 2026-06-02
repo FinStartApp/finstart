@@ -15,6 +15,7 @@ import {
   calculateVariableExpensesMonthly,
   calculateSubscriptionGroupsMonthly,
   calculateMortgageMonthlyTotal,
+  annualizedMonthlyDebt,
   toMonthly,
   formatCurrency,
 } from '@/lib/calculations'
@@ -27,7 +28,7 @@ function blankLineItem(label = ''): ExpenseLineItem {
   return { id: newId(), label, amount: 0, frequency: 'monthly', use_monthly_detail: false, monthly_amounts: Array(12).fill(0) }
 }
 function blankDebt(): DebtPayment {
-  return { id: newId(), label: '', balance: 0, interest_rate: 0, monthly_payment: 0, minimum_payment: 0, type: 'other' }
+  return { id: newId(), label: '', balance: 0, interest_rate: 0, monthly_payment: 0, minimum_payment: 0, type: 'other', start_month: null, start_year: null }
 }
 function blankSubscription(): Subscription {
   return { id: newId(), name: '', amount: 0, frequency: 'monthly' }
@@ -60,13 +61,19 @@ function fmtLine(n: number): string {
 }
 
 // ── Tooltip ───────────────────────────────────────────────────
-function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+function Tooltip({ text, children, align = 'center' }: { text: string; children: React.ReactNode; align?: 'center' | 'right' }) {
   return (
     <span className="relative inline-flex group/tip">
       {children}
-      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-lg bg-primary text-primary-foreground text-[11px] leading-snug px-2.5 py-1.5 text-center opacity-0 group-hover/tip:opacity-100 transition-opacity duration-75 z-50 shadow-md whitespace-normal">
+      <span
+        className="pointer-events-none absolute bottom-full mb-2 w-72 rounded-lg bg-primary text-primary-foreground text-[11px] leading-snug px-2.5 py-1.5 text-center opacity-0 group-hover/tip:opacity-100 transition-opacity duration-75 z-50 shadow-md whitespace-normal"
+        style={align === 'right' ? { right: 0, transform: 'translateX(20px)' } : { left: '50%', transform: 'translateX(-50%)' }}
+      >
         {text}
-        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-primary" />
+        {align === 'right'
+          ? <span className="absolute top-full right-3 border-4 border-transparent border-t-primary" />
+          : <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-primary" />
+        }
       </span>
     </span>
   )
@@ -631,19 +638,157 @@ function MortgageSection() {
 }
 
 // ── DebtSection ───────────────────────────────────────────────
+// Each debt row tracks start_month / start_year (nullable).
+// annualizedMonthlyDebt() prorates mid-year debts consistently
+// with how expense line items use 12-month averaging.
+// Avg/mo = annualized figure; Payment = what you actually pay each month.
+// They differ only when a debt started in the current calendar year.
+
+const MONTH_NAMES = [
+  'Jan','Feb','Mar','Apr','May','Jun',
+  'Jul','Aug','Sep','Oct','Nov','Dec',
+]
+
+function DebtRow({
+  debt,
+  updateDebtPayment,
+  removeDebtPayment,
+}: {
+  debt: DebtPayment
+  updateDebtPayment: (id: string, updates: Partial<DebtPayment>) => void
+  removeDebtPayment: (id: string) => void
+}) {
+  const [showStartDate, setShowStartDate] = useState(false)
+  // Local draft for year — lets user type freely without store fighting each keystroke
+  const [yearDraft, setYearDraft] = useState(debt.start_year ? String(debt.start_year) : '')
+
+  const avgMonthly = annualizedMonthlyDebt(debt)
+  const hasStartDate = debt.start_month !== null && debt.start_year !== null
+  const avgDiffersFromPayment = Math.abs(avgMonthly - debt.monthly_payment) > 0.01
+
+  function commitYear(raw: string) {
+    const digits = raw.replace(/\D/g, '').slice(0, 4)
+    setYearDraft(digits)
+    if (digits.length === 4) {
+      updateDebtPayment(debt.id, { start_year: parseInt(digits) })
+    } else {
+      updateDebtPayment(debt.id, { start_year: null })
+    }
+  }
+
+  return (
+    <>
+      {/* ── Main debt row ── */}
+      <div className="group grid grid-cols-[1fr_96px_60px_80px_80px_80px_24px] gap-2 px-5 py-2 border-b border-muted last:border-0 items-center hover:bg-hover transition-colors">
+        {/* Name — with subtle start date tag on hover or when set */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <input
+            type="text" value={debt.label} placeholder="e.g. Student loan"
+            onChange={e => updateDebtPayment(debt.id, { label: e.target.value })}
+            className="bg-card border border-border focus:border-accent rounded px-2 py-1 text-xs outline-none text-foreground placeholder:text-muted-foreground w-full transition-colors"
+          />
+          {/* Start date tag — always visible when set, hover-only when not */}
+          <button
+            onClick={() => setShowStartDate(s => !s)}
+            className={`flex-shrink-0 text-[10px] rounded px-1.5 py-0.5 whitespace-nowrap transition-colors border text-center ${
+              hasStartDate
+                ? 'text-accent border-accent/30 bg-selection'
+                : 'text-muted-foreground border-border bg-card opacity-0 group-hover:opacity-100'
+            }`}
+            style={{ width: 88 }}
+            title={hasStartDate ? 'Edit start date' : 'Set start date'}
+          >
+            {hasStartDate
+              ? `since ${MONTH_NAMES[(debt.start_month ?? 1) - 1]} ${debt.start_year}`
+              : '+ start date'
+            }
+          </button>
+        </div>
+        <NumericInput value={debt.balance}         onChange={v => updateDebtPayment(debt.id, { balance: v })}         prefix="$" className="w-full" />
+        <NumericInput value={debt.interest_rate}   onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}   suffix="%" decimals={2} className="w-full" placeholder="0.00" />
+        <NumericInput value={debt.monthly_payment} onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })} prefix="$" className="w-full" />
+        <NumericInput value={debt.minimum_payment} onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })} prefix="$" className="w-full" />
+        {/* Avg/mo — shows annualized figure, muted when same as payment */}
+        <div className="text-right">
+          <span className={`text-xs font-semibold font-[tabular-nums] ${avgDiffersFromPayment ? 'text-accent' : 'text-muted-foreground'}`}>
+            {fmtLine(avgMonthly)}
+          </span>
+          {avgDiffersFromPayment && (
+            <Tooltip align="right" text={`Based on ${13 - (debt.start_month ?? 1)} months of payments in ${debt.start_year} (started ${MONTH_NAMES[(debt.start_month ?? 1) - 1]} ${debt.start_year})`}>
+              <span className="ml-0.5 w-3 h-3 rounded-full bg-muted text-muted-foreground text-[9px] inline-flex items-center justify-center cursor-help font-bold">?</span>
+            </Tooltip>
+          )}
+        </div>
+        <button
+          onClick={() => removeDebtPayment(debt.id)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-negative flex items-center justify-center"
+        >
+          <X size={13} />
+        </button>
+      </div>
+
+      {/* ── Inline start date selector — appears below this row when open ── */}
+      {showStartDate && (
+        <div className="grid grid-cols-[1fr_auto] gap-3 px-5 py-2.5 border-b border-muted bg-hover items-center">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground whitespace-nowrap">Debt started:</span>
+            <select
+              value={debt.start_month ?? ''}
+              onChange={e => updateDebtPayment(debt.id, {
+                start_month: e.target.value ? parseInt(e.target.value) : null
+              })}
+              className="text-xs bg-card border border-border rounded px-2 py-1 outline-none text-foreground cursor-pointer"
+            >
+              <option value="">Month</option>
+              {MONTH_NAMES.map((m, i) => (
+                <option key={m} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <input
+              type="text" inputMode="numeric"
+              placeholder="Year (e.g. 2025)"
+              value={yearDraft}
+              onChange={e => commitYear(e.target.value)}
+              className="text-xs bg-card border border-border rounded px-2 py-1 outline-none text-foreground w-28"
+            />
+            {hasStartDate && (
+              <button
+                onClick={() => { updateDebtPayment(debt.id, { start_month: null, start_year: null }); setYearDraft('') }}
+                className="text-[11px] text-muted-foreground hover:text-negative transition-colors"
+              >
+                clear
+              </button>
+            )}
+            <span className="text-[11px] text-muted-foreground italic">
+              — affects Avg/mo for the current year only
+            </span>
+          </div>
+          <button
+            onClick={() => setShowStartDate(false)}
+            className="text-[11px] text-accent hover:underline whitespace-nowrap"
+          >
+            done
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 function DebtSection() {
   const debts             = useFinStartStore(s => s.fixed_expenses.debt_payments)
   const addDebtPayment    = useFinStartStore(s => s.addDebtPayment)
   const updateDebtPayment = useFinStartStore(s => s.updateDebtPayment)
   const removeDebtPayment = useFinStartStore(s => s.removeDebtPayment)
-  const total = debts.reduce((sum, d) => sum + d.monthly_payment, 0)
+  // Monthly total uses annualized figures — consistent with P&L calculation
+  const total = debts.reduce((sum, d) => sum + annualizedMonthlyDebt(d), 0)
 
   return (
     <div
       className="bg-card border border-border rounded-xl overflow-hidden shadow-sm"
       style={{ borderLeftWidth: 4, borderLeftColor: 'var(--primary)' }}
     >
-      {/* Header — white background with strong title, clearly the top of this card */}
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
           <h2 className="text-sm font-bold text-foreground">Other debt payments</h2>
@@ -657,14 +802,15 @@ function DebtSection() {
         </div>
       </div>
 
-      {/* Column headers — secondary bg with bottom border: clearly a header, not dominant */}
+      {/* Column headers */}
       {debts.length > 0 && (
-        <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 bg-secondary border-b border-border">
+        <div className="grid grid-cols-[1fr_96px_60px_80px_80px_80px_24px] gap-2 px-5 py-2 bg-secondary border-b border-border">
           <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide">Name</span>
           <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Balance</span>
           <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Rate</span>
           <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Payment</span>
           <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Min. pmt</span>
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Avg / mo</span>
           <span />
         </div>
       )}
@@ -676,26 +822,12 @@ function DebtSection() {
       )}
 
       {debts.map(debt => (
-        <div
+        <DebtRow
           key={debt.id}
-          className="group grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-muted last:border-0 items-center hover:bg-hover transition-colors"
-        >
-          <input
-            type="text" value={debt.label} placeholder="e.g. Student loan"
-            onChange={e => updateDebtPayment(debt.id, { label: e.target.value })}
-            className="bg-card border border-border focus:border-accent rounded px-2 py-1 text-xs outline-none text-foreground placeholder:text-muted-foreground w-full transition-colors"
-          />
-          <NumericInput value={debt.balance}         onChange={v => updateDebtPayment(debt.id, { balance: v })}         prefix="$" className="w-full" />
-          <NumericInput value={debt.interest_rate}   onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}   suffix="%" decimals={2} className="w-full" placeholder="0.00" />
-          <NumericInput value={debt.monthly_payment} onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })} prefix="$" className="w-full" />
-          <NumericInput value={debt.minimum_payment} onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })} prefix="$" className="w-full" />
-          <button
-            onClick={() => removeDebtPayment(debt.id)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-negative flex items-center justify-center"
-          >
-            <X size={13} />
-          </button>
-        </div>
+          debt={debt}
+          updateDebtPayment={updateDebtPayment}
+          removeDebtPayment={removeDebtPayment}
+        />
       ))}
 
       <button
