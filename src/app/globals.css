@@ -26,6 +26,8 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-selection: var(--selection);
+  --color-hover: var(--hover);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -87,6 +89,8 @@
   --ring:               #3E6A8F;   /* Focus ring — steel blue */
   --input:              #E2E8F0;   /* Input border at rest */
   --border:             #E2E8F0;   /* Dividers, card borders */
+  --selection:          #DDE6F5;   /* Light blue — selected state, active pills, linked badges */
+  --hover:              #F4F7FA;   /* Very light blue-gray — card hover surfaces */
 
   /* ── Semantic — financial meaning ── */
   --positive:           #10B981;   /* Emerald — positive cash flow, surplus */
