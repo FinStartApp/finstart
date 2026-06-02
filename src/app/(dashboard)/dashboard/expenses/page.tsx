@@ -33,17 +33,23 @@ function blankSubscription(): Subscription {
   return { id: newId(), name: '', amount: 0, frequency: 'monthly' }
 }
 function sortCategories(cats: ExpenseCategory[]): ExpenseCategory[] {
-  return [...cats].sort((a, b) => a.label.localeCompare(b.label))
+  return [...cats].sort((a, b) => {
+    const aNew = a.label === 'New category'
+    const bNew = b.label === 'New category'
+    if (aNew && !bNew) return 1
+    if (!aNew && bNew) return -1
+    return a.label.localeCompare(b.label)
+  })
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 const FREQ_OPTIONS: { value: ExpenseLineItem['frequency']; label: string }[] = [
-  { value: 'weekly', label: '/ wk' },
-  { value: 'biweekly', label: '/ 2wk' },
-  { value: 'monthly', label: '/ mo' },
+  { value: 'weekly',    label: '/ wk'  },
+  { value: 'biweekly',  label: '/ 2wk' },
+  { value: 'monthly',   label: '/ mo'  },
   { value: 'quarterly', label: '/ qtr' },
-  { value: 'annual', label: '/ yr' },
+  { value: 'annual',    label: '/ yr'  },
 ]
 
 function fmtLine(n: number): string {
@@ -53,7 +59,7 @@ function fmtLine(n: number): string {
   }).format(n)
 }
 
-// ── Tooltip — instant, no browser delay ──────────────────────
+// ── Tooltip ───────────────────────────────────────────────────
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   return (
     <span className="relative inline-flex group/tip">
@@ -76,7 +82,7 @@ function NumericInput({
   placeholder?: string; autoFocus?: boolean; style?: React.CSSProperties
 }) {
   const [focused, setFocused] = useState(false)
-  const [raw, setRaw] = useState('')
+  const [raw, setRaw]         = useState('')
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -111,7 +117,7 @@ function EditableLabel({
   inputClassName?: string; autoFocus?: boolean; onBlurWithEmpty?: () => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
+  const [draft, setDraft]     = useState(value)
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -176,7 +182,7 @@ function MonthlyDetailPanel({
   }
 
   const hasData = item.monthly_amounts.some(v => v > 0)
-  const avg = item.monthly_amounts.reduce((a, b) => a + b, 0) / 12
+  const avg     = item.monthly_amounts.reduce((a, b) => a + b, 0) / 12
 
   return (
     <div className="bg-secondary border-t border-border px-3 py-3">
@@ -194,7 +200,7 @@ function MonthlyDetailPanel({
             ↑ collapse
           </button>
           {hasData && (
-            <button onClick={clearDetail} className="text-[11px] text-muted-foreground hover:text-negative transition-colors">
+            <button onClick={clearDetail} className="text-[11px] text-negative hover:underline transition-colors font-semibold">
               clear all
             </button>
           )}
@@ -208,8 +214,8 @@ function MonthlyDetailPanel({
 }
 
 // ── LineItemRow ───────────────────────────────────────────────
-// Input zone is always 268px wide — inline style used here intentionally
-// because fixed pixel widths are not design tokens and belong in layout code
+// The input zone uses a fixed 268px width (inline style — intentional, not a design token)
+// The avg/mo row uses IDENTICAL column widths as the normal input row so they align perfectly
 function LineItemRow({
   item, categoryId, autoFocusLabel = false, locked = false, lockedLabel,
 }: {
@@ -229,23 +235,28 @@ function LineItemRow({
 
   if (locked) {
     return (
-      <div className="flex items-center gap-1.5 py-1.5 border-b border-muted last:border-0">
+      <div className="flex items-center gap-2 py-1.5 border-b border-muted last:border-0">
+        {/* w-4 spacer matches the delete button column */}
         <span className="w-4 flex-shrink-0" />
-        <span className="flex-1 text-xs text-foreground flex items-center gap-1.5 min-w-0">
-          <span className="truncate">{lockedLabel ?? item.label}</span>
-          <span className="text-[9px] bg-selection text-accent border border-accent/30 rounded px-1.5 py-0.5 flex-shrink-0 font-semibold tracking-wide uppercase">
-            linked
-          </span>
+        {/* Label gets flex-1 so it can show as much text as possible */}
+        <span className="text-xs text-foreground truncate flex-1 min-w-0">
+          {lockedLabel ?? item.label}
         </span>
-        <div className="flex items-center justify-end flex-shrink-0" style={{ width: 268 }}>
-          <span className="text-xs font-semibold text-foreground font-[tabular-nums]">{fmtLine(monthly)}</span>
-        </div>
+        {/* Linked pill — flex-shrink-0 so it never gets crushed */}
+        <span className="text-[9px] bg-selection text-accent border border-accent/30 rounded px-1.5 py-0.5 flex-shrink-0 font-semibold tracking-wide uppercase">
+          linked
+        </span>
+        {/* Amount — right-aligned, separated by a gap from the pill */}
+        <span className="text-xs font-semibold text-foreground font-[tabular-nums] flex-shrink-0 text-right ml-3">
+          {fmtLine(monthly)}
+        </span>
       </div>
     )
   }
 
   return (
     <>
+      {/* ── Single line item row — layout never changes, only the input zone contents swap ── */}
       <div className="group flex items-center gap-1.5 py-1.5 border-b border-muted last:border-0">
         <button
           onClick={() => removeExpenseLineItem(categoryId, item.id)}
@@ -262,18 +273,31 @@ function LineItemRow({
           inputClassName="text-xs w-full"
         />
 
-        {/* Fixed 268px input zone — same width in both states */}
+        {/* Fixed 268px input zone — same structure always, contents swap when monthly active */}
         <div className="flex items-center gap-1.5 flex-shrink-0" style={{ width: 268 }}>
           {isMonthlyActive ? (
             <>
-              <div className="flex items-center justify-between flex-1 bg-card border border-border rounded px-2 py-1" style={{ height: 26 }}>
-                <span className="text-[10px] text-muted-foreground">avg / mo</span>
-                <span className="text-xs font-semibold text-foreground font-[tabular-nums]">{fmtLine(monthly)}</span>
+              {/* Read-only avg amount — same 80px width as NumericInput */}
+              <div
+                className="flex items-center justify-end bg-selection border border-border rounded px-1.5 py-1 font-[tabular-nums] text-xs font-semibold text-accent flex-shrink-0"
+                style={{ width: 80 }}
+              >
+                {fmtLine(monthly)}
               </div>
+              {/* Static /mo label — same 58px width as frequency select, left-padded like the select */}
+              <div
+                className="flex items-center bg-selection border border-border rounded text-[11px] text-accent font-medium flex-shrink-0 px-1"
+                style={{ width: 58, height: 26 }}
+              >
+                / mo
+              </div>
+              {/* Spacer matching the converted-amount column */}
+              <span className="flex-shrink-0" style={{ width: 48 }} />
+              {/* Edit/hide toggle — same 52px width as "by month" button */}
               <button
                 onClick={togglePanel}
-                className="text-[10px] text-accent hover:underline whitespace-nowrap flex-shrink-0"
-                style={{ width: 40 }}
+                className="text-[10px] text-accent hover:underline whitespace-nowrap flex-shrink-0 border border-dashed border-border rounded bg-card"
+                style={{ width: 52, padding: '2px 0', textAlign: 'center' }}
               >
                 {panelOpen ? '↑ hide' : '↓ edit'}
               </button>
@@ -307,12 +331,13 @@ function LineItemRow({
                 className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-muted-foreground hover:text-accent flex-shrink-0 border border-dashed border-border rounded bg-card whitespace-nowrap"
                 style={{ width: 52, padding: '2px 0', textAlign: 'center' }}
               >
-                by mo
+                by month
               </button>
             </>
           )}
         </div>
       </div>
+
       {panelOpen && (
         <MonthlyDetailPanel item={item} categoryId={categoryId} onClose={() => setPanelOpen(false)} />
       )}
@@ -322,9 +347,9 @@ function LineItemRow({
 
 // ── CategoryCard ──────────────────────────────────────────────
 function CategoryCard({
-  category, flashId, mortgageMonthly,
+  category, flashId, mortgageMonthly, mortgageIsActive, autoFocusLabel = false,
 }: {
-  category: ExpenseCategory; flashId: string | null; mortgageMonthly: number
+  category: ExpenseCategory; flashId: string | null; mortgageMonthly: number; mortgageIsActive: boolean; autoFocusLabel?: boolean
 }) {
   const updateExpenseCategory = useFinStartStore(s => s.updateExpenseCategory)
   const removeExpenseCategory = useFinStartStore(s => s.removeExpenseCategory)
@@ -336,8 +361,13 @@ function CategoryCard({
 
   const isHousing        = category.label.toLowerCase() === 'housing'
   const isFlashing       = flashId === category.id
-  const showMortgageLine = isHousing && mortgageMonthly > 0
-  const itemsTotal       = category.items.reduce((sum, item) => sum + resolveLineItemMonthly(item), 0)
+  // Show mortgage linked row as soon as the checkbox is checked — amount shows $0 until filled in
+  const showMortgageLine = isHousing && mortgageIsActive
+  // Hide the default rent/housing cost item when mortgage is active — it's replaced by the linked row
+  const visibleItems     = isHousing && mortgageIsActive
+    ? category.items.filter(item => item.label.toLowerCase() !== 'housing cost / rent')
+    : category.items
+  const itemsTotal       = visibleItems.reduce((sum, item) => sum + resolveLineItemMonthly(item), 0)
   const total            = itemsTotal + (showMortgageLine ? mortgageMonthly : 0)
   const isEmpty          = total === 0
 
@@ -349,7 +379,7 @@ function CategoryCard({
   }
 
   function handleDelete() {
-    if ((category.items.length > 0 || showMortgageLine) && !confirmDelete) { setConfirmDelete(true); return }
+    if ((visibleItems.length > 0 || showMortgageLine) && !confirmDelete) { setConfirmDelete(true); return }
     removeExpenseCategory(category.id)
   }
 
@@ -362,14 +392,14 @@ function CategoryCard({
   return (
     <div className={`border rounded-xl mb-2 overflow-hidden shadow-sm transition-all duration-500 ${isFlashing ? 'bg-selection border-accent' : 'bg-card border-border'}`}>
 
-      {/* Header — full row clickable to toggle open/closed */}
+      {/* ── Header — ENTIRE ROW is the click target for expand/collapse ── */}
       <div
-        className="group flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-hover transition-colors select-none"
+        className="group flex items-center gap-2 px-3 py-3 cursor-pointer hover:bg-hover transition-colors select-none"
         onClick={() => setOpen(o => !o)}
       >
-        {/* F/V pill */}
+        {/* F/V toggle — stopPropagation so clicking F or V doesn't expand/collapse */}
         <div
-          className="flex border border-border rounded-full overflow-hidden opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          className="flex border border-border rounded-full overflow-hidden flex-shrink-0"
           onClick={e => e.stopPropagation()}
         >
           <button
@@ -384,22 +414,23 @@ function CategoryCard({
           >V</button>
         </div>
 
-        {/* Name */}
-        <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()}>
+        {/* Category name — pencil button inside EditableLabel has its own stopPropagation */}
+        <div className="flex-1 min-w-0">
           <EditableLabel
             value={category.label}
             onSave={v => updateExpenseCategory(category.id, { label: v })}
+            autoFocus={autoFocusLabel}
             className="text-sm font-semibold text-foreground"
             inputClassName="text-sm font-semibold w-full"
           />
         </div>
 
-        {/* Total pill */}
-        <span className={`text-xs font-semibold font-[tabular-nums] px-2 py-0.5 rounded-full flex-shrink-0 ${isEmpty ? 'text-muted-foreground' : 'bg-selection text-primary'}`}>
+        {/* Total pill — larger and clearly readable */}
+        <span className={`text-sm font-bold font-[tabular-nums] px-3 py-0.5 rounded-full flex-shrink-0 ${isEmpty ? 'bg-secondary text-muted-foreground' : 'bg-selection text-primary'}`}>
           {formatCurrency(total)}
         </span>
 
-        {/* Delete */}
+        {/* Delete controls — stopPropagation */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
           {confirmDelete ? (
             <>
@@ -415,26 +446,26 @@ function CategoryCard({
           )}
         </div>
 
-        {/* Chevron — pointer-events-none so it doesn't block the parent onClick */}
+        {/* Chevron — pointer-events-none, purely decorative, parent div handles the click */}
         <div className="text-muted-foreground flex-shrink-0 ml-1 pointer-events-none">
           {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </div>
       </div>
 
-      {/* Expanded content */}
+      {/* ── Expanded content ── */}
       {open && (
         <>
-          {(category.items.length > 0 || showMortgageLine) && (
+          {(visibleItems.length > 0 || showMortgageLine) && (
             <div className="px-3 border-t border-border bg-secondary">
               {showMortgageLine && (
                 <LineItemRow item={mortgageLinkedItem} categoryId={category.id} locked lockedLabel="Mortgage (P&I + Escrow)" />
               )}
-              {category.items.map(item => (
+              {visibleItems.map(item => (
                 <LineItemRow key={item.id} item={item} categoryId={category.id} autoFocusLabel={item.id === newItemId} />
               ))}
             </div>
           )}
-          {category.items.length === 0 && !showMortgageLine && (
+          {visibleItems.length === 0 && !showMortgageLine && (
             <div className="px-3 py-3 border-t border-border bg-secondary">
               <p className="text-xs text-muted-foreground italic">No line items yet — add one below.</p>
             </div>
@@ -465,101 +496,130 @@ function MortgageSection() {
     if (!checked && mortgage.balance > 0) {
       if (!window.confirm('Remove mortgage? This will clear all mortgage data and unlink it from Housing.')) return
       updateMortgage({ is_active: false, balance: 0, interest_rate: 0, pi_payment: 0, minimum_pi_payment: 0, escrow_taxes: 0, escrow_insurance: 0, escrow_pmi: 0 })
+      setShowEscrow(false)
     } else {
       updateMortgage({ is_active: checked })
+      // Auto-open escrow when user first checks the mortgage box
+      if (checked) setShowEscrow(true)
     }
   }
 
   return (
     <div className="mb-3">
-      <label className="flex items-center gap-2.5 cursor-pointer group select-none mb-2">
-        <div
-          onClick={() => toggle(!mortgage.is_active)}
-          className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0 ${mortgage.is_active ? 'bg-primary border-primary' : 'border-border group-hover:border-accent'}`}
-        >
-          {mortgage.is_active && (
-            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-none stroke-white stroke-2">
-              <polyline points="1,4 3.5,6.5 9,1" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </div>
-        <span className="text-sm font-semibold text-foreground">I have a mortgage</span>
-        <span className="text-xs text-muted-foreground">— payment appears automatically in Housing</span>
-      </label>
-
-      {mortgage.is_active && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-muted">
-            <div className="grid grid-cols-[1fr_96px_80px_96px_96px] gap-3 items-end">
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Loan balance</p>
-                <NumericInput value={mortgage.balance} onChange={v => updateMortgage({ balance: v })} prefix="$" className="w-full" />
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Rate</p>
-                <NumericInput value={mortgage.interest_rate} onChange={v => updateMortgage({ interest_rate: v })} suffix="%" decimals={3} className="w-full" placeholder="0.000" />
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">P&amp;I pmt</p>
-                <NumericInput value={mortgage.pi_payment} onChange={v => updateMortgage({ pi_payment: v })} prefix="$" className="w-full" />
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Min. P&amp;I</p>
-                <NumericInput value={mortgage.minimum_pi_payment} onChange={v => updateMortgage({ minimum_pi_payment: v })} prefix="$" className="w-full" />
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowEscrow(s => !s)}
-            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-hover transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Escrow — property taxes, insurance, PMI</span>
-              {hasEscrow && (
-                <span className="text-[10px] text-primary font-semibold font-[tabular-nums] bg-selection px-1.5 py-0.5 rounded">
-                  {fmtLine(escrowTotal)} / mo
-                </span>
+      {/* Single outer container carries the continuous navy left border across toggle + detail */}
+      <div
+        className="bg-card border border-border rounded-xl overflow-hidden shadow-sm"
+        style={{ borderLeftWidth: 4, borderLeftColor: 'var(--primary)' }}
+      >
+        {/* Toggle row */}
+        <div className="px-4 py-3 border-b border-border">
+          <label className="flex items-center gap-2.5 cursor-pointer group select-none">
+            <div
+              onClick={() => toggle(!mortgage.is_active)}
+              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0 ${mortgage.is_active ? 'bg-primary border-primary' : 'border-border group-hover:border-accent'}`}
+            >
+              {mortgage.is_active && (
+                <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-none stroke-white stroke-2">
+                  <polyline points="1,4 3.5,6.5 9,1" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               )}
             </div>
-            {showEscrow ? <ChevronUp size={13} className="text-muted-foreground" /> : <ChevronDown size={13} className="text-muted-foreground" />}
-          </button>
+            <span className="text-sm font-semibold text-foreground">I have a mortgage</span>
+            <span className="text-xs text-muted-foreground">— payment appears automatically in Housing</span>
+          </label>
+        </div>
 
-          {showEscrow && (
-            <div className="px-4 py-3 border-t border-muted bg-secondary">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Property taxes</p>
-                  <NumericInput value={mortgage.escrow_taxes} onChange={v => updateMortgage({ escrow_taxes: v })} prefix="$" className="w-full" />
-                  <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Homeowner's ins.</p>
-                  <NumericInput value={mortgage.escrow_insurance} onChange={v => updateMortgage({ escrow_insurance: v })} prefix="$" className="w-full" />
-                  <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                    PMI
-                    <Tooltip text="Required when your down payment was less than 20% of the home price. Disappears when your loan balance reaches 80% of the home's value.">
-                      <span className="w-3.5 h-3.5 rounded-full bg-muted text-muted-foreground text-[9px] flex items-center justify-center cursor-help font-bold">?</span>
-                    </Tooltip>
-                  </p>
-                  <NumericInput value={mortgage.escrow_pmi} onChange={v => updateMortgage({ escrow_pmi: v })} prefix="$" className="w-full" />
-                  <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
+        {mortgage.is_active && (
+          <>
+            {/* Column headers — white bg with border-bottom only, no gray fill */}
+            <div className="grid grid-cols-[1fr_100px_64px_88px_88px] gap-2 px-5 py-2 border-b border-border">
+              <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide">Name</span>
+              <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Balance</span>
+              <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Rate</span>
+              <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Payment</span>
+              <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Min. pmt</span>
+            </div>
+
+            {/* Single mortgage data row — white bg, border-bottom */}
+            <div className="grid grid-cols-[1fr_100px_64px_88px_88px] gap-2 px-5 py-3 border-b border-border items-center">
+              <input
+                type="text"
+                defaultValue="Mortgage P&I"
+                readOnly
+                className="bg-secondary border border-border rounded px-2 py-1 text-xs text-muted-foreground w-full cursor-default"
+              />
+              <NumericInput value={mortgage.balance}            onChange={v => updateMortgage({ balance: v })}            prefix="$" className="w-full" />
+              <NumericInput value={mortgage.interest_rate}      onChange={v => updateMortgage({ interest_rate: v })}      suffix="%" decimals={3} className="w-full" placeholder="0.000" />
+              <NumericInput value={mortgage.pi_payment}         onChange={v => updateMortgage({ pi_payment: v })}         prefix="$" className="w-full" />
+              <NumericInput value={mortgage.minimum_pi_payment} onChange={v => updateMortgage({ minimum_pi_payment: v })} prefix="$" className="w-full" />
+            </div>
+
+            {/* Escrow accordion toggle — text-foreground (not muted) so it reads as actionable */}
+            <button
+              onClick={() => setShowEscrow(s => !s)}
+              className="w-full flex items-center justify-between px-5 py-2.5 hover:bg-hover transition-colors border-b border-border group"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-foreground">Escrow</span>
+                <span className="text-xs text-muted-foreground">— property taxes, insurance, PMI</span>
+                {hasEscrow && (
+                  <span className="text-[10px] text-primary font-semibold font-[tabular-nums] bg-selection px-1.5 py-0.5 rounded">
+                    {fmtLine(escrowTotal)} / mo
+                  </span>
+                )}
+                {/* Hint shown only when collapsed and no escrow values entered yet */}
+                {!showEscrow && !hasEscrow && (
+                  <span className="text-[11px] text-accent font-medium">
+                    — click to enter amounts
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {showEscrow
+                  ? <ChevronUp size={15} className="text-accent" />
+                  : <ChevronDown size={15} className="text-accent group-hover:text-primary transition-colors" />
+                }
+              </div>
+            </button>
+
+            {/* Escrow fields — the ONE gray sub-section in this card, clearly contained */}
+            {showEscrow && (
+              <div className="px-5 py-4 border-b border-border bg-secondary">
+                <div className="grid grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Property taxes</p>
+                    <NumericInput value={mortgage.escrow_taxes} onChange={v => updateMortgage({ escrow_taxes: v })} prefix="$" className="w-full" />
+                    <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5">Homeowner's ins.</p>
+                    <NumericInput value={mortgage.escrow_insurance} onChange={v => updateMortgage({ escrow_insurance: v })} prefix="$" className="w-full" />
+                    <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      PMI
+                      <Tooltip text="Required when your down payment was less than 20% of the home price. Disappears when your loan balance reaches 80% of the home's value.">
+                        <span className="w-3.5 h-3.5 rounded-full bg-muted text-muted-foreground text-[9px] flex items-center justify-center cursor-help font-bold">?</span>
+                      </Tooltip>
+                    </p>
+                    <NumericInput value={mortgage.escrow_pmi} onChange={v => updateMortgage({ escrow_pmi: v })} prefix="$" className="w-full" />
+                    <p className="text-[10px] text-muted-foreground mt-1">Monthly equivalent</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {totalMonthly > 0 && (
-            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-secondary">
-              <span className="text-xs text-muted-foreground">Total monthly housing payment</span>
-              <span className="text-sm font-semibold text-foreground font-[tabular-nums]">{fmtLine(totalMonthly)}</span>
-            </div>
-          )}
-        </div>
-      )}
+            {/* Total row — white bg, label and amount bold navy */}
+            {totalMonthly > 0 && (
+              <div className="flex items-center justify-between px-5 py-3">
+                <span className="text-xs font-bold text-primary">Total monthly housing payment</span>
+                <span className="text-sm font-bold text-primary font-[tabular-nums]">{fmtLine(totalMonthly)}</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -577,9 +637,10 @@ function DebtSection() {
       className="bg-card border border-border rounded-xl overflow-hidden shadow-sm"
       style={{ borderLeftWidth: 4, borderLeftColor: 'var(--primary)' }}
     >
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-secondary">
+      {/* Header — white background with strong title, clearly the top of this card */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Other debt payments</h2>
+          <h2 className="text-sm font-bold text-foreground">Other debt payments</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Auto loans, student loans, credit cards — balance and rate carry forward to the Debt Payoff planner
           </p>
@@ -590,13 +651,14 @@ function DebtSection() {
         </div>
       </div>
 
+      {/* Column headers — secondary bg with bottom border: clearly a header, not dominant */}
       {debts.length > 0 && (
-        <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-muted bg-secondary">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Name</span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide text-right">Balance</span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide text-right">Rate</span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide text-right">Payment</span>
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wide text-right">Min. pmt</span>
+        <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 bg-secondary border-b border-border">
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide">Name</span>
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Balance</span>
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Rate</span>
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Payment</span>
+          <span className="text-[10px] text-foreground font-semibold uppercase tracking-wide text-right">Min. pmt</span>
           <span />
         </div>
       )}
@@ -651,15 +713,17 @@ function SubscriptionsCard({ onManage }: { onManage: () => void }) {
 
   return (
     <div className="bg-card border border-border rounded-xl mb-2 overflow-hidden shadow-sm">
-      <div className="flex items-center gap-2 px-3 py-2.5">
-        <div className="flex border border-border rounded-full overflow-hidden opacity-40 flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <div className="flex border border-border rounded-full overflow-hidden flex-shrink-0">
           <span className="px-2 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground">F</span>
           <span className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">V</span>
         </div>
         <span className="flex-1 text-sm font-semibold text-foreground">Subscriptions & memberships</span>
-        <span className={`text-xs font-semibold font-[tabular-nums] px-2 py-0.5 rounded-full flex-shrink-0 ${isEmpty ? 'text-muted-foreground' : 'bg-selection text-primary'}`}>
+        <span className={`text-sm font-bold font-[tabular-nums] px-3 py-0.5 rounded-full flex-shrink-0 ${isEmpty ? 'bg-secondary text-muted-foreground' : 'bg-selection text-primary'}`}>
           {formatCurrency(total)}
         </span>
+        {/* Invisible chevron-sized spacer — matches CategoryCard header exactly so pill aligns */}
+        <ChevronDown size={14} className="flex-shrink-0 ml-1 opacity-0" aria-hidden="true" />
       </div>
       <button
         onClick={onManage}
@@ -827,11 +891,18 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── AddCategoryButton ─────────────────────────────────────────
-function AddCategoryButton({ isFixed }: { isFixed: boolean }) {
+function AddCategoryButton({ isFixed, onAdded }: { isFixed: boolean; onAdded: (id: string) => void }) {
   const addExpenseCategory = useFinStartStore(s => s.addExpenseCategory)
+
+  function handleAdd() {
+    const id = newId()
+    addExpenseCategory({ id, label: 'New category', is_fixed: isFixed, items: [] })
+    onAdded(id)
+  }
+
   return (
     <button
-      onClick={() => addExpenseCategory({ id: newId(), label: 'New category', is_fixed: isFixed, items: [] })}
+      onClick={handleAdd}
       className="w-full flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] text-muted-foreground hover:text-accent border border-dashed border-border rounded-lg mt-1 bg-card transition-colors"
     >
       <Plus size={11} /> add category
@@ -840,13 +911,15 @@ function AddCategoryButton({ isFixed }: { isFixed: boolean }) {
 }
 
 // ── SectionHeader ─────────────────────────────────────────────
+// Intentionally larger and heavier than category card labels (text-sm font-semibold)
+// These are structural page anchors — they must dominate the category names below them
 function SectionHeader({ title }: { title: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-xs font-bold text-primary uppercase tracking-widest">
+    <div className="flex items-center gap-3 mb-4">
+      <span className="text-base font-extrabold text-primary uppercase tracking-widest flex-shrink-0">
         {title}
       </span>
-      <div className="flex-1 h-px bg-border" />
+      <div className="flex-1 h-0.5 bg-primary" style={{ opacity: 0.2 }} />
     </div>
   )
 }
@@ -859,6 +932,7 @@ export default function ExpensesPage() {
 
   const [showSubsModal, setShowSubsModal] = useState(false)
   const [flashId, setFlashId]             = useState<string | null>(null)
+  const [newCategoryId, setNewCategoryId] = useState<string | null>(null)
 
   const updateExpenseCategory = useCallback(
     (id: string, updates: Parameters<typeof updateExpenseCategoryRaw>[1]) => {
@@ -870,6 +944,7 @@ export default function ExpensesPage() {
   void updateExpenseCategory
 
   const mortgageMonthly    = calculateMortgageMonthlyTotal(fixed_expenses.mortgage)
+  const mortgageIsActive   = fixed_expenses.mortgage.is_active
   const fixedCategories    = sortCategories(fixed_expenses.categories)
   const variableCategories = sortCategories(variable_expenses.categories)
   const totalFixed         = calculateFixedExpensesMonthly(fixed_expenses)
@@ -881,6 +956,7 @@ export default function ExpensesPage() {
       {showSubsModal && <SubscriptionsModal onClose={() => setShowSubsModal(false)} />}
 
       <div className="p-6 max-w-5xl mx-auto">
+        {/* Page title */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-foreground" style={{ letterSpacing: '-0.4px' }}>
             Expenses
@@ -890,53 +966,55 @@ export default function ExpensesPage() {
           </p>
         </div>
 
-        {/* Summary bar */}
-        <div className="bg-card border border-border rounded-xl px-5 py-4 flex gap-0 mb-6 shadow-sm">
-          <div className="flex flex-col gap-0.5 flex-1">
-            <span className="text-[11px] text-muted-foreground uppercase tracking-widest">Total monthly</span>
-            <span className="text-2xl font-bold text-foreground font-[tabular-nums]" style={{ letterSpacing: '-0.4px' }}>
-              {formatCurrency(totalExpenses)}
-            </span>
-          </div>
-          <div className="w-px bg-border mx-5" />
-          <div className="flex flex-col gap-0.5 flex-1">
-            <span className="text-[11px] text-muted-foreground uppercase tracking-widest">Fixed</span>
-            <span className="text-2xl font-bold text-primary font-[tabular-nums]" style={{ letterSpacing: '-0.4px' }}>
-              {formatCurrency(totalFixed)}
-            </span>
-          </div>
-          <div className="w-px bg-border mx-5" />
-          <div className="flex flex-col gap-0.5 flex-1">
-            <span className="text-[11px] text-muted-foreground uppercase tracking-widest">Variable</span>
-            <span className="text-2xl font-bold text-accent font-[tabular-nums]" style={{ letterSpacing: '-0.4px' }}>
-              {formatCurrency(totalVariable)}
-            </span>
+        {/* Summary bar — larger numbers, clear visual weight */}
+        <div className="bg-card border border-border rounded-xl mb-8 shadow-sm overflow-hidden">
+          <div className="flex divide-x divide-border">
+            <div className="flex flex-col gap-1 flex-1 px-6 py-4">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Total monthly</span>
+              <span className="text-3xl font-bold text-foreground font-[tabular-nums]" style={{ letterSpacing: '-0.5px' }}>
+                {formatCurrency(totalExpenses)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 flex-1 px-6 py-4">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Fixed</span>
+              <span className="text-3xl font-bold text-primary font-[tabular-nums]" style={{ letterSpacing: '-0.5px' }}>
+                {formatCurrency(totalFixed)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 flex-1 px-6 py-4">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Variable</span>
+              <span className="text-3xl font-bold text-accent font-[tabular-nums]" style={{ letterSpacing: '-0.5px' }}>
+                {formatCurrency(totalVariable)}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Debt section */}
-        <div className="mb-8">
+        {/* Debt section — white tray matching categories tray below */}
+        <div className="bg-card border border-border rounded-xl shadow-sm p-5 mb-8">
           <SectionHeader title="Debt" />
           <MortgageSection />
           <DebtSection />
         </div>
 
-        {/* Fixed + Variable columns */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <SectionHeader title="Fixed" />
-            {fixedCategories.map(cat => (
-              <CategoryCard key={cat.id} category={cat} flashId={flashId} mortgageMonthly={mortgageMonthly} />
-            ))}
-            <SubscriptionsCard onManage={() => setShowSubsModal(true)} />
-            <AddCategoryButton isFixed={true} />
-          </div>
-          <div>
-            <SectionHeader title="Variable" />
-            {variableCategories.map(cat => (
-              <CategoryCard key={cat.id} category={cat} flashId={flashId} mortgageMonthly={mortgageMonthly} />
-            ))}
-            <AddCategoryButton isFixed={false} />
+        {/* Fixed + Variable columns — white tray groups them as one workspace */}
+        <div className="bg-card border border-border rounded-xl shadow-sm p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <SectionHeader title="Fixed" />
+              {fixedCategories.map(cat => (
+                <CategoryCard key={cat.id} category={cat} flashId={flashId} mortgageMonthly={mortgageMonthly} mortgageIsActive={mortgageIsActive} autoFocusLabel={cat.id === newCategoryId} />
+              ))}
+              <SubscriptionsCard onManage={() => setShowSubsModal(true)} />
+              <AddCategoryButton isFixed={true} onAdded={id => setNewCategoryId(id)} />
+            </div>
+            <div>
+              <SectionHeader title="Variable" />
+              {variableCategories.map(cat => (
+                <CategoryCard key={cat.id} category={cat} flashId={flashId} mortgageMonthly={mortgageMonthly} mortgageIsActive={mortgageIsActive} autoFocusLabel={cat.id === newCategoryId} />
+              ))}
+              <AddCategoryButton isFixed={false} onAdded={id => setNewCategoryId(id)} />
+            </div>
           </div>
         </div>
       </div>

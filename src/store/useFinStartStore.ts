@@ -383,6 +383,7 @@ const defaultMortgage: MortgageData = {
 
 const defaultFixedCategories: ExpenseCategory[] = [
   makeCategory('Housing', true, [
+    'Housing cost / rent',
     'House maintenance',
     'Renovations',
     'House cleaning',
