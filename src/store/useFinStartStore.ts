@@ -12,7 +12,6 @@ export type PayFrequency = 'weekly' | 'biweekly' | 'semi_monthly' | 'monthly'
 export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual' | 'one_time'
 export type RetirementAccountType = 'traditional' | 'roth' | 'both'
 
-// --- Pre-tax deductions ---
 export interface PreTaxDeductions {
   retirement_type: RetirementAccountType
   retirement401k_traditional_percent: number
@@ -29,18 +28,15 @@ export interface PreTaxDeductions {
   other_pretax: number
 }
 
-// --- Post-tax deductions ---
 export interface PostTaxDeductions {
   other_posttax: number
 }
 
-// --- Bonus ---
 export interface BonusInfo {
   has_bonus: boolean
   gross_annual_bonus: number
 }
 
-// --- Pension ---
 export interface PensionInfo {
   has_pension: boolean
   first_contribution_year: number
@@ -49,7 +45,6 @@ export interface PensionInfo {
   benefit_multiplier_percent: number
 }
 
-// --- Earner ---
 export interface AdditionalIncomeSource {
   id: string
   label: string
@@ -83,18 +78,15 @@ export interface Earner {
 // EXPENSE TYPES
 // ============================================================
 
-// A single line item inside any expense category
 export interface ExpenseLineItem {
   id: string
   label: string
   amount: number
   frequency: Frequency
-  // Optional monthly detail — 12 values, one per month (Jan=0 … Dec=11)
   use_monthly_detail: boolean
   monthly_amounts: number[]
 }
 
-// A single subscription inside a subscription group
 export interface Subscription {
   id: string
   name: string
@@ -102,29 +94,46 @@ export interface Subscription {
   frequency: Frequency
 }
 
-// A named group of subscriptions (Streaming, Music, etc.)
 export interface SubscriptionGroup {
   id: string
   name: string
   subscriptions: Subscription[]
 }
 
-// A debt entry — payment feeds P&L, min_payment feeds DTI calcs
 export interface DebtPayment {
   id: string
   label: string
   balance: number
   interest_rate: number
-  monthly_payment: number      // what the user actually pays — feeds cash flow
-  minimum_payment: number      // lender minimum — used for DTI / debt payoff module
+  monthly_payment: number
+  minimum_payment: number
   type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
 }
 
-// A full expense category — works for both fixed and variable
+// ============================================================
+// MORTGAGE — separate from generic debt payments
+// P&I feeds debt calculations and payoff module.
+// Escrow (taxes, insurance, PMI) feeds cash flow only.
+// Total housing expense = pi_payment + all escrow fields.
+// ============================================================
+
+export interface MortgageData {
+  is_active: boolean          // "I have a mortgage" checkbox
+  // Debt fields — feed balance sheet + debt payoff module
+  balance: number
+  interest_rate: number
+  pi_payment: number          // principal + interest only
+  minimum_pi_payment: number  // for DTI calculations
+  // Escrow fields — feed cash flow only, not debt calculations
+  escrow_taxes: number        // monthly equivalent of property taxes
+  escrow_insurance: number    // monthly homeowner's insurance
+  escrow_pmi: number          // PMI — required when LTV > 80%, optional field
+}
+
 export interface ExpenseCategory {
   id: string
   label: string
-  is_fixed: boolean            // true = lives in Fixed column, false = Variable
+  is_fixed: boolean
   items: ExpenseLineItem[]
 }
 
@@ -133,6 +142,7 @@ export interface ExpenseCategory {
 // ============================================================
 
 export interface FixedExpenses {
+  mortgage: MortgageData
   categories: ExpenseCategory[]
   subscription_groups: SubscriptionGroup[]
   debt_payments: DebtPayment[]
@@ -142,7 +152,6 @@ export interface VariableExpenses {
   categories: ExpenseCategory[]
 }
 
-// --- Savings ---
 export interface SavingsGoal {
   id: string
   label: string
@@ -158,7 +167,6 @@ export interface SavingsAndInvestments {
   savings_goals: SavingsGoal[]
 }
 
-// --- Balance Sheet ---
 export interface Asset {
   id: string
   label: string
@@ -175,7 +183,6 @@ export interface Liability {
   type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
 }
 
-// --- Forecast ---
 export interface ForecastAssumptions {
   inflation_rate: number
   investment_return_rate: number
@@ -183,7 +190,6 @@ export interface ForecastAssumptions {
   forecast_end_age: number
 }
 
-// --- Modules ---
 export type ModuleId =
   | 'home_affordability'
   | 'car_purchase'
@@ -203,7 +209,6 @@ export interface ActiveModules {
   [key: string]: boolean
 }
 
-// --- Root State ---
 export interface FinStartState {
   household_type: HouseholdType
   filing_status: FilingStatus
@@ -228,6 +233,9 @@ export interface FinStartState {
   updateEarner: (id: string, updates: Partial<Earner>) => void
   removeEarner: (id: string) => void
   removeSecondEarner: () => void
+
+  // Mortgage action
+  updateMortgage: (updates: Partial<MortgageData>) => void
 
   // Expense category actions
   addExpenseCategory: (category: ExpenseCategory) => void
@@ -288,7 +296,11 @@ function makeLineItem(label: string): ExpenseLineItem {
   }
 }
 
-function makeCategory(label: string, is_fixed: boolean, itemLabels: string[] = []): ExpenseCategory {
+function makeCategory(
+  label: string,
+  is_fixed: boolean,
+  itemLabels: string[] = []
+): ExpenseCategory {
   return {
     id: crypto.randomUUID(),
     label,
@@ -358,30 +370,61 @@ export function createDefaultEarner(id: string, label: string): Earner {
   }
 }
 
-// Default fixed expense categories
+const defaultMortgage: MortgageData = {
+  is_active: false,
+  balance: 0,
+  interest_rate: 0,
+  pi_payment: 0,
+  minimum_pi_payment: 0,
+  escrow_taxes: 0,
+  escrow_insurance: 0,
+  escrow_pmi: 0,
+}
+
 const defaultFixedCategories: ExpenseCategory[] = [
-  makeCategory('Housing', true, ['Mortgage (P&I) + Escrow', 'House maintenance', 'Renovations', 'House cleaning']),
+  makeCategory('Housing', true, [
+    'House maintenance',
+    'Renovations',
+    'House cleaning',
+  ]),
   makeCategory('Insurance', true, ['Car insurance', 'Life insurance']),
   makeCategory('Utilities', true, ['Cell phone', 'Internet', 'Utilities']),
-  makeCategory('Children & education', true, ['Preschool / daycare', 'Babysitter', 'Extracurriculars']),
-  makeCategory('Giving & donations', true, ['Church / tithe', 'Charitable giving']),
+  makeCategory('Children & education', true, [
+    'Preschool / daycare',
+    'Babysitter',
+    'Extracurriculars',
+  ]),
+  makeCategory('Giving & donations', true, [
+    'Church / tithe',
+    'Charitable giving',
+  ]),
 ]
 
-// Default variable expense categories
 const defaultVariableCategories: ExpenseCategory[] = [
   makeCategory('Food & groceries', false, ['Groceries', 'Fast food']),
   makeCategory('Dining & takeout', false, ['Restaurants', 'Delivery apps']),
   makeCategory('Shopping', false, ['General spending', 'Large purchases']),
   makeCategory('Entertainment', false, ['Events & activities', 'In-app purchases']),
-  makeCategory('Medical & health', false, ['Doctor visits', 'Pharmacy', 'Gym membership']),
-  makeCategory('Auto & transportation', false, ['Gas', 'Car maintenance', 'Registration']),
+  makeCategory('Medical & health', false, [
+    'Doctor visits',
+    'Pharmacy',
+    'Gym membership',
+  ]),
+  makeCategory('Auto & transportation', false, [
+    'Gas',
+    'Car maintenance',
+    'Registration',
+  ]),
   makeCategory('Personal care', false, ['Hair & grooming', 'Nails']),
   makeCategory('Pets', false, ['Pet food', 'Vet', 'Grooming']),
   makeCategory('Travel & vacation', false, ['Vacation budget']),
-  makeCategory('Gifts & celebrations', false, ['Birthday gifts', 'Christmas', 'Anniversaries']),
+  makeCategory('Gifts & celebrations', false, [
+    'Birthday gifts',
+    'Christmas',
+    'Anniversaries',
+  ]),
 ]
 
-// Default subscription groups
 const defaultSubscriptionGroups: SubscriptionGroup[] = [
   { id: crypto.randomUUID(), name: 'Streaming', subscriptions: [] },
   { id: crypto.randomUUID(), name: 'Music', subscriptions: [] },
@@ -394,6 +437,7 @@ const defaultSubscriptionGroups: SubscriptionGroup[] = [
 ]
 
 const defaultFixedExpenses: FixedExpenses = {
+  mortgage: defaultMortgage,
   categories: defaultFixedCategories,
   subscription_groups: defaultSubscriptionGroups,
   debt_payments: [],
@@ -421,10 +465,10 @@ const defaultForecastAssumptions: ForecastAssumptions = {
 // HELPER — find which collection a category lives in
 // ============================================================
 
-function findCategory(state: FinStartState, id: string): {
-  collection: 'fixed' | 'variable'
-  index: number
-} | null {
+function findCategory(
+  state: FinStartState,
+  id: string
+): { collection: 'fixed' | 'variable'; index: number } | null {
   const fi = state.fixed_expenses.categories.findIndex(c => c.id === id)
   if (fi !== -1) return { collection: 'fixed', index: fi }
   const vi = state.variable_expenses.categories.findIndex(c => c.id === id)
@@ -455,28 +499,37 @@ export const useFinStartStore = create<FinStartState>()(
 
       // ── Household ──
       setHouseholdType: (type) => set({ household_type: type }),
-      setFilingStatus: (status) => set({ filing_status: status }),
+      setFilingStatus:  (status) => set({ filing_status: status }),
       setStateOfResidence: (state) => set({ state_of_residence: state }),
       setNumberOfDependents: (count) => set({ number_of_dependents: count }),
 
       // ── Earners ──
       addEarner: (earner) =>
-        set((state) => ({ earners: [...state.earners, earner] })),
+        set(state => ({ earners: [...state.earners, earner] })),
 
       updateEarner: (id, updates) =>
-        set((state) => ({
-          earners: state.earners.map((e) => e.id === id ? { ...e, ...updates } : e),
+        set(state => ({
+          earners: state.earners.map(e => e.id === id ? { ...e, ...updates } : e),
         })),
 
       removeEarner: (id) =>
-        set((state) => ({ earners: state.earners.filter((e) => e.id !== id) })),
+        set(state => ({ earners: state.earners.filter(e => e.id !== id) })),
 
       removeSecondEarner: () =>
-        set((state) => ({ earners: state.earners.slice(0, 1) })),
+        set(state => ({ earners: state.earners.slice(0, 1) })),
+
+      // ── Mortgage ──
+      updateMortgage: (updates) =>
+        set(state => ({
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            mortgage: { ...state.fixed_expenses.mortgage, ...updates },
+          },
+        })),
 
       // ── Expense categories ──
       addExpenseCategory: (category) =>
-        set((state) => {
+        set(state => {
           if (category.is_fixed) {
             return {
               fixed_expenses: {
@@ -494,15 +547,14 @@ export const useFinStartStore = create<FinStartState>()(
         }),
 
       updateExpenseCategory: (id, updates) =>
-        set((state) => {
+        set(state => {
           const loc = findCategory(state, id)
           if (!loc) return {}
 
           if (loc.collection === 'fixed') {
-            const categories = state.fixed_expenses.categories.map((c) =>
+            const categories = state.fixed_expenses.categories.map(c =>
               c.id === id ? { ...c, ...updates } : c
             )
-            // If is_fixed changed to false, move it to variable
             const updated = categories.find(c => c.id === id)!
             if (updates.is_fixed === false) {
               return {
@@ -519,8 +571,7 @@ export const useFinStartStore = create<FinStartState>()(
             return { fixed_expenses: { ...state.fixed_expenses, categories } }
           }
 
-          // variable collection
-          const categories = state.variable_expenses.categories.map((c) =>
+          const categories = state.variable_expenses.categories.map(c =>
             c.id === id ? { ...c, ...updates } : c
           )
           const updated = categories.find(c => c.id === id)!
@@ -540,7 +591,7 @@ export const useFinStartStore = create<FinStartState>()(
         }),
 
       removeExpenseCategory: (id) =>
-        set((state) => {
+        set(state => {
           const loc = findCategory(state, id)
           if (!loc) return {}
           if (loc.collection === 'fixed') {
@@ -561,7 +612,7 @@ export const useFinStartStore = create<FinStartState>()(
 
       // ── Line items ──
       addExpenseLineItem: (categoryId, item) =>
-        set((state) => {
+        set(state => {
           const loc = findCategory(state, categoryId)
           if (!loc) return {}
           if (loc.collection === 'fixed') {
@@ -585,7 +636,7 @@ export const useFinStartStore = create<FinStartState>()(
         }),
 
       updateExpenseLineItem: (categoryId, itemId, updates) =>
-        set((state) => {
+        set(state => {
           const loc = findCategory(state, categoryId)
           if (!loc) return {}
           const updateItems = (c: ExpenseCategory) =>
@@ -609,7 +660,7 @@ export const useFinStartStore = create<FinStartState>()(
         }),
 
       removeExpenseLineItem: (categoryId, itemId) =>
-        set((state) => {
+        set(state => {
           const loc = findCategory(state, categoryId)
           if (!loc) return {}
           const removeItem = (c: ExpenseCategory) =>
@@ -634,7 +685,7 @@ export const useFinStartStore = create<FinStartState>()(
 
       // ── Subscription groups ──
       addSubscriptionGroup: (group) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             subscription_groups: [...state.fixed_expenses.subscription_groups, group],
@@ -642,7 +693,7 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       updateSubscriptionGroup: (groupId, updates) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
@@ -652,16 +703,18 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       removeSubscriptionGroup: (groupId) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
-            subscription_groups: state.fixed_expenses.subscription_groups.filter(g => g.id !== groupId),
+            subscription_groups: state.fixed_expenses.subscription_groups.filter(
+              g => g.id !== groupId
+            ),
           },
         })),
 
-      // ── Subscriptions within a group ──
+      // ── Subscriptions ──
       addSubscription: (groupId, subscription) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
@@ -673,7 +726,7 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       updateSubscription: (groupId, subId, updates) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
@@ -690,7 +743,7 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       removeSubscription: (groupId, subId) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
@@ -703,7 +756,7 @@ export const useFinStartStore = create<FinStartState>()(
 
       // ── Debt payments ──
       addDebtPayment: (debt) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             debt_payments: [...state.fixed_expenses.debt_payments, debt],
@@ -711,7 +764,7 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       updateDebtPayment: (id, updates) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             debt_payments: state.fixed_expenses.debt_payments.map(d =>
@@ -721,7 +774,7 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       removeDebtPayment: (id) =>
-        set((state) => ({
+        set(state => ({
           fixed_expenses: {
             ...state.fixed_expenses,
             debt_payments: state.fixed_expenses.debt_payments.filter(d => d.id !== id),
@@ -730,12 +783,12 @@ export const useFinStartStore = create<FinStartState>()(
 
       // ── Savings ──
       updateSavingsAndInvestments: (updates) =>
-        set((state) => ({
+        set(state => ({
           savings_and_investments: { ...state.savings_and_investments, ...updates },
         })),
 
       addSavingsGoal: (goal) =>
-        set((state) => ({
+        set(state => ({
           savings_and_investments: {
             ...state.savings_and_investments,
             savings_goals: [...state.savings_and_investments.savings_goals, goal],
@@ -743,44 +796,48 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       removeSavingsGoal: (id) =>
-        set((state) => ({
+        set(state => ({
           savings_and_investments: {
             ...state.savings_and_investments,
-            savings_goals: state.savings_and_investments.savings_goals.filter(g => g.id !== id),
+            savings_goals: state.savings_and_investments.savings_goals.filter(
+              g => g.id !== id
+            ),
           },
         })),
 
       // ── Balance sheet ──
       addAsset: (asset) =>
-        set((state) => ({ assets: [...state.assets, asset] })),
+        set(state => ({ assets: [...state.assets, asset] })),
 
       updateAsset: (id, updates) =>
-        set((state) => ({
+        set(state => ({
           assets: state.assets.map(a => a.id === id ? { ...a, ...updates } : a),
         })),
 
       removeAsset: (id) =>
-        set((state) => ({ assets: state.assets.filter(a => a.id !== id) })),
+        set(state => ({ assets: state.assets.filter(a => a.id !== id) })),
 
       addLiability: (liability) =>
-        set((state) => ({ liabilities: [...state.liabilities, liability] })),
+        set(state => ({ liabilities: [...state.liabilities, liability] })),
 
       updateLiability: (id, updates) =>
-        set((state) => ({
-          liabilities: state.liabilities.map(l => l.id === id ? { ...l, ...updates } : l),
+        set(state => ({
+          liabilities: state.liabilities.map(l =>
+            l.id === id ? { ...l, ...updates } : l
+          ),
         })),
 
       removeLiability: (id) =>
-        set((state) => ({ liabilities: state.liabilities.filter(l => l.id !== id) })),
+        set(state => ({ liabilities: state.liabilities.filter(l => l.id !== id) })),
 
       // ── Forecast / modules ──
       updateForecastAssumptions: (updates) =>
-        set((state) => ({
+        set(state => ({
           forecast_assumptions: { ...state.forecast_assumptions, ...updates },
         })),
 
       toggleModule: (moduleId) =>
-        set((state) => ({
+        set(state => ({
           active_modules: {
             ...state.active_modules,
             [moduleId]: !state.active_modules[moduleId],
@@ -788,12 +845,10 @@ export const useFinStartStore = create<FinStartState>()(
         })),
 
       setModuleData: (moduleId, data) =>
-        set((state) => ({
+        set(state => ({
           module_data: { ...state.module_data, [moduleId]: data },
         })),
     }),
-    {
-      name: 'finstart-storage',
-    }
+    { name: 'finstart-storage' }
   )
 )

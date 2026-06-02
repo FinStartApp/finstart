@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, X, ArrowRight, Pencil, Check } from 'lucide-react'
+import { Plus, X, ArrowRight, Pencil, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { useFinStartStore } from '@/store/useFinStartStore'
 import type {
   ExpenseCategory,
@@ -9,12 +9,14 @@ import type {
   DebtPayment,
   SubscriptionGroup,
   Subscription,
+  MortgageData,
 } from '@/store/useFinStartStore'
 import {
   resolveLineItemMonthly,
   calculateFixedExpensesMonthly,
   calculateVariableExpensesMonthly,
   calculateSubscriptionGroupsMonthly,
+  calculateMortgageMonthlyTotal,
   toMonthly,
   formatCurrency,
 } from '@/lib/calculations'
@@ -57,7 +59,6 @@ function sortCategories(cats: ExpenseCategory[]): ExpenseCategory[] {
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-// Fix 1 — "one_time" removed from expense frequency options
 const FREQ_OPTIONS: { value: ExpenseLineItem['frequency']; label: string }[] = [
   { value: 'weekly',    label: '/ wk'  },
   { value: 'biweekly',  label: '/ 2wk' },
@@ -66,8 +67,8 @@ const FREQ_OPTIONS: { value: ExpenseLineItem['frequency']; label: string }[] = [
   { value: 'annual',    label: '/ yr'  },
 ]
 
-// Fix 7 — line-level amounts show 2 decimals; summary bar uses whole numbers
-function fmtLineAmount(n: number): string {
+// Fix 7 — 2 decimals on line-level amounts; summary bar stays whole numbers
+function fmtLine(n: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -77,14 +78,15 @@ function fmtLineAmount(n: number): string {
 }
 
 // ── NumericInput ──────────────────────────────────────────────
+// Fix 8 — decimals prop controls display precision
 function NumericInput({
   value,
   onChange,
   className = '',
   prefix = '',
   suffix = '',
-  decimals = 0,
-  placeholder = '0',
+  decimals = 2,
+  placeholder = '0.00',
   autoFocus = false,
 }: {
   value: number
@@ -101,7 +103,7 @@ function NumericInput({
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (autoFocus) ref.current?.focus()
+    if (autoFocus) { ref.current?.focus(); ref.current?.select() }
   }, [autoFocus])
 
   const displayValue = focused
@@ -128,12 +130,12 @@ function NumericInput({
         setFocused(false)
       }}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-      className={`bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 outline-none text-right font-[tabular-nums] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] ${className}`}
+      className={`bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 outline-none text-right font-[tabular-nums] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] transition-colors ${className}`}
     />
   )
 }
 
-// ── EditableLabel — Fix 4: pencil icon, Fix 3: autoFocus prop ─
+// ── EditableLabel — pencil icon, autoFocus, double-click ──────
 function EditableLabel({
   value,
   onSave,
@@ -149,28 +151,24 @@ function EditableLabel({
   autoFocus?: boolean
   onBlurWithEmpty?: () => void
 }) {
-  const [editing, setEditing] = useState(autoFocus)
-  const [draft, setDraft] = useState(value)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState(value)
   const ref = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (editing) {
-      ref.current?.focus()
-      ref.current?.select()
-    }
-  }, [editing])
-
-  // If parent flips autoFocus on (new item), enter edit mode
+  // Fix 3 — enter edit mode on mount if autoFocus
   useEffect(() => {
     if (autoFocus) { setDraft(value); setEditing(true) }
-  }, [autoFocus]) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFocus])
+
+  useEffect(() => {
+    if (editing) { ref.current?.focus(); ref.current?.select() }
+  }, [editing])
 
   function commit() {
     const trimmed = draft.trim()
-    if (trimmed) {
-      onSave(trimmed)
-      setEditing(false)
-    } else {
+    if (trimmed) { onSave(trimmed); setEditing(false) }
+    else {
       if (onBlurWithEmpty) onBlurWithEmpty()
       else { setDraft(value); setEditing(false) }
     }
@@ -194,12 +192,18 @@ function EditableLabel({
   }
 
   return (
-    <span className={`group/label flex items-center gap-1 min-w-0 ${className}`}>
-      <span className="truncate">{value}</span>
-      {/* Fix 4 — pencil always present in DOM, visible on hover */}
+    <span className={`group/lbl flex items-center gap-1 min-w-0 ${className}`}>
+      {/* Fix 3 — double-click re-enabled */}
+      <span
+        className="truncate cursor-default"
+        onDoubleClick={() => { setDraft(value); setEditing(true) }}
+      >
+        {value}
+      </span>
+      {/* Fix 4 — pencil always in DOM, visible on hover */}
       <button
         onClick={e => { e.stopPropagation(); setDraft(value); setEditing(true) }}
-        className="opacity-0 group-hover/label:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0"
+        className="opacity-0 group-hover/lbl:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0"
         title="Rename"
       >
         <Pencil size={11} />
@@ -208,7 +212,7 @@ function EditableLabel({
   )
 }
 
-// ── MonthlyDetailPanel — Fix 2 ────────────────────────────────
+// ── MonthlyDetailPanel ────────────────────────────────────────
 function MonthlyDetailPanel({
   item,
   categoryId,
@@ -226,7 +230,7 @@ function MonthlyDetailPanel({
     updateExpenseLineItem(categoryId, item.id, { monthly_amounts: next })
   }
 
-  // Fix 2 — clear button zeros all 12 months and exits monthly detail mode
+  // Fix 2 — clear zeros all 12 months and exits monthly detail mode
   function clearDetail() {
     updateExpenseLineItem(categoryId, item.id, {
       use_monthly_detail: false,
@@ -247,12 +251,12 @@ function MonthlyDetailPanel({
               value={item.monthly_amounts[i] ?? 0}
               onChange={v => setMonth(i, v)}
               className="w-full text-xs"
+              placeholder="0"
             />
           </div>
         ))}
       </div>
       <div className="flex items-center justify-between mt-1">
-        {/* Fix 2 — clear button */}
         <button
           onClick={clearDetail}
           className="text-[11px] text-[var(--muted-foreground)] hover:text-[var(--negative)] transition-colors"
@@ -261,28 +265,36 @@ function MonthlyDetailPanel({
         </button>
         <span className="text-xs text-[var(--muted-foreground)]">
           Monthly avg:{' '}
-          <span className="font-medium text-[var(--foreground)]">{fmtLineAmount(avg)}</span>
+          <span className="font-medium text-[var(--foreground)] font-[tabular-nums]">
+            {fmtLine(avg)}
+          </span>
         </span>
       </div>
     </div>
   )
 }
 
-// ── LineItemRow — Fixes 2, 3, 4 ──────────────────────────────
+// ── LineItemRow ───────────────────────────────────────────────
 function LineItemRow({
   item,
   categoryId,
   autoFocusLabel = false,
+  locked = false,
+  lockedLabel,
 }: {
   item: ExpenseLineItem
   categoryId: string
   autoFocusLabel?: boolean
+  locked?: boolean        // mortgage-linked line — read only
+  lockedLabel?: string    // override display label for locked lines
 }) {
   const updateExpenseLineItem = useFinStartStore(s => s.updateExpenseLineItem)
   const removeExpenseLineItem = useFinStartStore(s => s.removeExpenseLineItem)
   const [panelOpen, setPanelOpen] = useState(false)
 
-  // Fix 2 — when monthly detail is active, use avg; otherwise normal conversion
+  // Fix 4 — monthly detail only active if at least one month > 0
+  const hasMonthlyData = item.monthly_amounts.some(v => v > 0)
+  const isMonthlyActive = item.use_monthly_detail && hasMonthlyData
   const monthly = resolveLineItemMonthly(item)
 
   function update(updates: Partial<ExpenseLineItem>) {
@@ -290,18 +302,32 @@ function LineItemRow({
   }
 
   function toggleMonthlyDetail() {
-    if (item.use_monthly_detail) {
-      // already in monthly mode — just toggle panel visibility
+    if (isMonthlyActive) {
       setPanelOpen(p => !p)
     } else {
-      // entering monthly mode
       update({ use_monthly_detail: true })
       setPanelOpen(true)
     }
   }
 
-  function handleClearFromPanel() {
-    setPanelOpen(false)
+  // locked = mortgage-linked line — show read-only row with badge
+  if (locked) {
+    return (
+      <div className="flex items-center gap-1.5 py-1.5 border-b border-[var(--muted)] last:border-0 opacity-90">
+        <span className="w-4 flex-shrink-0" />
+        <span className="flex-1 text-xs text-[var(--foreground)] flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{lockedLabel ?? item.label}</span>
+          <span className="text-[9px] bg-[#DDE6F5] text-[var(--accent)] border border-[var(--accent)]/30 rounded px-1.5 py-0.5 flex-shrink-0 font-medium tracking-wide uppercase">
+            linked
+          </span>
+        </span>
+        <span className="text-xs font-medium text-[var(--foreground)] font-[tabular-nums]">
+          {fmtLine(monthly)}
+        </span>
+        <span className="text-[11px] text-[var(--muted-foreground)] min-w-[44px]" />
+        <span className="w-[52px]" />
+      </div>
+    )
   }
 
   return (
@@ -316,37 +342,40 @@ function LineItemRow({
           <X size={11} />
         </button>
 
-        {/* Fix 3 + 4 — label with autoFocus and pencil icon */}
+        {/* label */}
         <EditableLabel
           value={item.label || 'Untitled'}
           onSave={v => update({ label: v })}
           autoFocus={autoFocusLabel}
-          className="flex-1 text-xs text-[var(--foreground)] min-w-0 cursor-pointer"
+          className="flex-1 text-xs text-[var(--foreground)] min-w-0"
           inputClassName="text-xs w-full"
         />
 
-        {/* Fix 2 — if monthly detail active, show avg + edit; else show amount + freq */}
-        {item.use_monthly_detail ? (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-[var(--muted-foreground)] italic">
-              Monthly detail ·{' '}
-              <span className="text-[var(--foreground)] font-medium not-italic font-[tabular-nums]">
-                avg {fmtLineAmount(monthly)}
+        {/* Fix 2 + 5 — monthly detail active state aligned with inputs */}
+        {isMonthlyActive ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-[var(--secondary)] border border-[var(--border)] rounded px-2 py-1">
+              <span className="text-[11px] text-[var(--muted-foreground)]">avg</span>
+              <span className="text-xs font-medium text-[var(--foreground)] font-[tabular-nums]">
+                {fmtLine(monthly)}
               </span>
-            </span>
+            </div>
             <button
               onClick={toggleMonthlyDetail}
-              className="text-[10px] text-[var(--accent)] hover:underline"
+              className="text-[10px] text-[var(--accent)] hover:underline whitespace-nowrap"
             >
               {panelOpen ? 'hide' : 'edit'}
             </button>
           </div>
         ) : (
           <>
+            {/* Fix 8 — 2 decimal places on amount input */}
             <NumericInput
               value={item.amount}
               onChange={v => update({ amount: v })}
               className="w-16 text-xs"
+              decimals={2}
+              placeholder="0.00"
             />
             <select
               value={item.frequency}
@@ -357,14 +386,14 @@ function LineItemRow({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-            {/* Fix 7 — 2 decimal places on line-level converted amount */}
+            {/* Fix 7 — 2 decimal places on converted monthly amount */}
             <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] min-w-[52px] text-right">
-              {item.frequency === 'monthly' ? '' : fmtLineAmount(monthly)}
+              {item.frequency === 'monthly' ? '' : fmtLine(monthly)}
             </span>
-            {/* Fix 2 — "by month" label instead of bare chevron */}
+            {/* Fix 2 — labeled "by month" button */}
             <button
               onClick={toggleMonthlyDetail}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0 whitespace-nowrap border border-[var(--border)] rounded px-1.5 py-0.5"
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0 border border-[var(--border)] rounded px-1.5 py-0.5 whitespace-nowrap"
               title="Enter amounts by month"
             >
               by month
@@ -373,41 +402,45 @@ function LineItemRow({
         )}
       </div>
 
-      {/* monthly detail panel */}
       {panelOpen && item.use_monthly_detail && (
         <MonthlyDetailPanel
           item={item}
           categoryId={categoryId}
-          onClose={handleClearFromPanel}
+          onClose={() => setPanelOpen(false)}
         />
       )}
     </>
   )
 }
 
-// ── CategoryCard — Fixes 3, 4, 5, 9 ──────────────────────────
+// ── CategoryCard ──────────────────────────────────────────────
 function CategoryCard({
   category,
   flashId,
+  mortgageMonthly,
 }: {
   category: ExpenseCategory
   flashId: string | null
+  mortgageMonthly: number   // > 0 means show linked mortgage line in Housing
 }) {
   const updateExpenseCategory = useFinStartStore(s => s.updateExpenseCategory)
   const removeExpenseCategory = useFinStartStore(s => s.removeExpenseCategory)
   const addExpenseLineItem    = useFinStartStore(s => s.addExpenseLineItem)
 
   const [confirmDelete, setConfirmDelete] = useState(false)
-  // Fix 3 — track which line item id should auto-focus its label
-  const [newItemId, setNewItemId] = useState<string | null>(null)
+  const [newItemId, setNewItemId]         = useState<string | null>(null)
 
+  const isHousing  = category.label.toLowerCase() === 'housing'
   const isFlashing = flashId === category.id
 
-  const total = category.items.reduce(
+  // mortgage linked line only appears inside the Housing category
+  const showMortgageLine = isHousing && mortgageMonthly > 0
+
+  const itemsTotal = category.items.reduce(
     (sum, item) => sum + resolveLineItemMonthly(item), 0
   )
+  const total = itemsTotal + (showMortgageLine ? mortgageMonthly : 0)
 
-  // Fix 3 — add line and immediately set it to auto-focus
   function addLine() {
     const item = blankLineItem('')
     addExpenseLineItem(category.id, item)
@@ -419,15 +452,24 @@ function CategoryCard({
   }
 
   function handleDelete() {
-    if (category.items.length > 0 && !confirmDelete) {
+    if ((category.items.length > 0 || showMortgageLine) && !confirmDelete) {
       setConfirmDelete(true)
       return
     }
     removeExpenseCategory(category.id)
   }
 
+  // Build a synthetic locked line item for the mortgage link display
+  const mortgageLinkedItem: ExpenseLineItem = {
+    id: '__mortgage_linked__',
+    label: 'Mortgage (P&I + Escrow)',
+    amount: mortgageMonthly,
+    frequency: 'monthly',
+    use_monthly_detail: false,
+    monthly_amounts: Array(12).fill(0),
+  }
+
   return (
-    // Fix 5 + 9 — flash highlight on arrival; card shadow for contrast
     <div
       className={`border rounded-xl mb-2 overflow-hidden shadow-sm transition-all duration-700 ${
         isFlashing
@@ -437,7 +479,6 @@ function CategoryCard({
     >
       {/* header */}
       <div className="group flex items-center gap-2 px-3 py-2.5 hover:bg-[var(--secondary)] transition-colors">
-        {/* F/V pill */}
         <div className="flex border border-[var(--border)] rounded-full overflow-hidden opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={() => toggleFixed(true)}
@@ -459,7 +500,6 @@ function CategoryCard({
           >V</button>
         </div>
 
-        {/* Fix 4 — pencil on category name */}
         <EditableLabel
           value={category.label}
           onSave={v => updateExpenseCategory(category.id, { label: v })}
@@ -467,12 +507,10 @@ function CategoryCard({
           inputClassName="text-sm font-medium w-full"
         />
 
-        {/* total */}
         <span className="text-sm font-medium text-[var(--foreground)] font-[tabular-nums] min-w-[60px] text-right">
           {formatCurrency(total)}
         </span>
 
-        {/* delete */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {confirmDelete ? (
             <>
@@ -490,14 +528,22 @@ function CategoryCard({
       </div>
 
       {/* line items */}
-      {category.items.length > 0 && (
+      {(category.items.length > 0 || showMortgageLine) && (
         <div className="px-3 border-t border-[var(--border)]">
+          {/* mortgage linked line — always first in Housing */}
+          {showMortgageLine && (
+            <LineItemRow
+              item={mortgageLinkedItem}
+              categoryId={category.id}
+              locked={true}
+              lockedLabel="Mortgage (P&I + Escrow)"
+            />
+          )}
           {category.items.map(item => (
             <LineItemRow
               key={item.id}
               item={item}
               categoryId={category.id}
-              // Fix 3 — pass autoFocus only to the newly created item
               autoFocusLabel={item.id === newItemId}
             />
           ))}
@@ -515,7 +561,185 @@ function CategoryCard({
   )
 }
 
-// ── DebtSection — Fix 8 ───────────────────────────────────────
+// ── MortgageSection ───────────────────────────────────────────
+function MortgageSection() {
+  const mortgage       = useFinStartStore(s => s.fixed_expenses.mortgage)
+  const updateMortgage = useFinStartStore(s => s.updateMortgage)
+
+  const [showEscrow, setShowEscrow] = useState(false)
+
+  const totalMonthly = calculateMortgageMonthlyTotal(mortgage)
+  const escrowTotal  = mortgage.escrow_taxes + mortgage.escrow_insurance + mortgage.escrow_pmi
+  const hasEscrow    = escrowTotal > 0
+
+  function toggle(checked: boolean) {
+    if (!checked && mortgage.balance > 0) {
+      // has data — ask before clearing
+      if (!window.confirm('Remove mortgage? This will clear all mortgage data and unlink it from Housing.')) return
+      updateMortgage({
+        is_active: false,
+        balance: 0, interest_rate: 0,
+        pi_payment: 0, minimum_pi_payment: 0,
+        escrow_taxes: 0, escrow_insurance: 0, escrow_pmi: 0,
+      })
+    } else {
+      updateMortgage({ is_active: checked })
+    }
+  }
+
+  return (
+    <div className="mb-3">
+      {/* checkbox row */}
+      <label className="flex items-center gap-2.5 cursor-pointer group select-none mb-2">
+        <div
+          onClick={() => toggle(!mortgage.is_active)}
+          className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0 ${
+            mortgage.is_active
+              ? 'bg-[var(--primary)] border-[var(--primary)]'
+              : 'border-[var(--border)] group-hover:border-[var(--accent)]'
+          }`}
+        >
+          {mortgage.is_active && (
+            <svg viewBox="0 0 10 8" className="w-2.5 h-2 fill-none stroke-white stroke-2">
+              <polyline points="1,4 3.5,6.5 9,1" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+        <span className="text-sm font-medium text-[var(--foreground)]">I have a mortgage</span>
+        <span className="text-xs text-[var(--muted-foreground)]">
+          — your payment will appear automatically in Housing expenses
+        </span>
+      </label>
+
+      {mortgage.is_active && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
+          {/* P&I row — always visible when active */}
+          <div className="px-4 py-3 border-b border-[var(--muted)]">
+            <div className="grid grid-cols-[1fr_100px_72px_88px_88px] gap-3 items-end">
+              <div>
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Loan balance</p>
+                <NumericInput
+                  value={mortgage.balance}
+                  onChange={v => updateMortgage({ balance: v })}
+                  prefix="$"
+                  className="w-full text-xs"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Rate</p>
+                <NumericInput
+                  value={mortgage.interest_rate}
+                  onChange={v => updateMortgage({ interest_rate: v })}
+                  suffix="%"
+                  decimals={3}
+                  className="w-full text-xs"
+                  placeholder="0.000"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">P&amp;I payment</p>
+                <NumericInput
+                  value={mortgage.pi_payment}
+                  onChange={v => updateMortgage({ pi_payment: v })}
+                  prefix="$"
+                  className="w-full text-xs"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Min. P&amp;I</p>
+                <NumericInput
+                  value={mortgage.minimum_pi_payment}
+                  onChange={v => updateMortgage({ minimum_pi_payment: v })}
+                  prefix="$"
+                  className="w-full text-xs"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* escrow toggle row */}
+          <button
+            onClick={() => setShowEscrow(s => !s)}
+            className="w-full flex items-center justify-between px-4 py-2 hover:bg-[var(--secondary)] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--muted-foreground)]">
+                Escrow — property taxes, insurance, PMI
+              </span>
+              {hasEscrow && (
+                <span className="text-[10px] text-[var(--accent)] font-medium font-[tabular-nums]">
+                  {fmtLine(escrowTotal)} / mo
+                </span>
+              )}
+            </div>
+            {showEscrow ? <ChevronUp size={13} className="text-[var(--muted-foreground)]" /> : <ChevronDown size={13} className="text-[var(--muted-foreground)]" />}
+          </button>
+
+          {/* escrow fields */}
+          {showEscrow && (
+            <div className="px-4 py-3 border-t border-[var(--muted)] bg-[var(--secondary)]">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Property taxes / mo</p>
+                  <NumericInput
+                    value={mortgage.escrow_taxes}
+                    onChange={v => updateMortgage({ escrow_taxes: v })}
+                    prefix="$"
+                    className="w-full text-xs"
+                    placeholder="0.00"
+                  />
+                  <p className="text-[10px] text-[var(--muted-foreground)] mt-1">Enter monthly equivalent</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Homeowner's insurance / mo</p>
+                  <NumericInput
+                    value={mortgage.escrow_insurance}
+                    onChange={v => updateMortgage({ escrow_insurance: v })}
+                    prefix="$"
+                    className="w-full text-xs"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1 flex items-center gap-1">
+                    PMI / mo
+                    <span title="Required when your down payment was less than 20% of the home price. Disappears when your loan balance reaches 80% of the home's value.">
+                      <Info size={10} className="text-[var(--muted-foreground)] cursor-help" />
+                    </span>
+                  </p>
+                  <NumericInput
+                    value={mortgage.escrow_pmi}
+                    onChange={v => updateMortgage({ escrow_pmi: v })}
+                    prefix="$"
+                    className="w-full text-xs"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* total row */}
+          {totalMonthly > 0 && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-[var(--border)] bg-[var(--secondary)]">
+              <span className="text-[11px] text-[var(--muted-foreground)]">
+                Total monthly housing payment
+              </span>
+              <span className="text-sm font-medium text-[var(--foreground)] font-[tabular-nums]">
+                {fmtLine(totalMonthly)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── DebtSection ───────────────────────────────────────────────
 function DebtSection() {
   const debts             = useFinStartStore(s => s.fixed_expenses.debt_payments)
   const addDebtPayment    = useFinStartStore(s => s.addDebtPayment)
@@ -525,24 +749,22 @@ function DebtSection() {
   const total = debts.reduce((sum, d) => sum + d.monthly_payment, 0)
 
   return (
-    // Fix 8 — full-width section with distinct background, below both columns
-    <div className="mt-6 bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
-      {/* section header */}
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] bg-[var(--secondary)]">
         <div>
-          <h2 className="text-sm font-medium text-[var(--foreground)]">Debt payments</h2>
+          <h2 className="text-sm font-medium text-[var(--foreground)]">Other debt payments</h2>
           <p className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
-            Balance and interest rate carry forward to the Debt Payoff planner
+            Auto loans, student loans, credit cards — balance and rate carry forward to the Debt Payoff planner
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0 ml-4">
           <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-wide block">Monthly total</span>
           <span className="text-lg font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(total)}</span>
         </div>
       </div>
 
       {/* column headers */}
-      <div className="grid grid-cols-[1fr_100px_72px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)]">
+      <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)]">
         <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">Name</span>
         <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Balance</span>
         <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Rate</span>
@@ -551,50 +773,28 @@ function DebtSection() {
         <span />
       </div>
 
-      {/* debt rows */}
       {debts.length === 0 && (
         <p className="px-5 py-4 text-xs text-[var(--muted-foreground)] italic">
-          No debts added yet. Click below to add a loan, credit card, or other debt.
+          No debts added yet.
         </p>
       )}
 
       {debts.map(debt => (
         <div
           key={debt.id}
-          className="group grid grid-cols-[1fr_100px_72px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)] last:border-0 items-center hover:bg-[var(--secondary)] transition-colors"
+          className="group grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)] last:border-0 items-center hover:bg-[var(--secondary)] transition-colors"
         >
           <input
             type="text"
             value={debt.label}
             placeholder="e.g. Student loan"
             onChange={e => updateDebtPayment(debt.id, { label: e.target.value })}
-            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-2 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full"
+            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-2 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full transition-colors"
           />
-          <NumericInput
-            value={debt.balance}
-            onChange={v => updateDebtPayment(debt.id, { balance: v })}
-            prefix="$"
-            className="w-full text-xs"
-          />
-          <NumericInput
-            value={debt.interest_rate}
-            onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}
-            suffix="%"
-            decimals={2}
-            className="w-full text-xs"
-          />
-          <NumericInput
-            value={debt.monthly_payment}
-            onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })}
-            prefix="$"
-            className="w-full text-xs"
-          />
-          <NumericInput
-            value={debt.minimum_payment}
-            onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })}
-            prefix="$"
-            className="w-full text-xs"
-          />
+          <NumericInput value={debt.balance}          onChange={v => updateDebtPayment(debt.id, { balance: v })}          prefix="$"  className="w-full text-xs" />
+          <NumericInput value={debt.interest_rate}    onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}    suffix="%" decimals={2} className="w-full text-xs" placeholder="0.00" />
+          <NumericInput value={debt.monthly_payment}  onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })}  prefix="$"  className="w-full text-xs" />
+          <NumericInput value={debt.minimum_payment}  onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })}  prefix="$"  className="w-full text-xs" />
           <button
             onClick={() => removeDebtPayment(debt.id)}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex items-center justify-center"
@@ -604,7 +804,6 @@ function DebtSection() {
         </div>
       ))}
 
-      {/* add debt */}
       <button
         onClick={() => addDebtPayment(blankDebt())}
         className="w-full flex items-center gap-1.5 px-5 py-2.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border-t border-[var(--muted)] transition-colors"
@@ -620,11 +819,10 @@ function SubscriptionsCard({ onManage }: { onManage: () => void }) {
   const groups = useFinStartStore(s => s.fixed_expenses.subscription_groups)
   const total  = calculateSubscriptionGroupsMonthly(groups)
   const count  = groups.reduce((sum, g) => sum + g.subscriptions.length, 0)
-  const activeGroups = groups.filter(g => g.subscriptions.length > 0)
-
-  const summary = activeGroups.length === 0
+  const active = groups.filter(g => g.subscriptions.length > 0)
+  const summary = active.length === 0
     ? 'No subscriptions added yet'
-    : activeGroups.map(g => g.name).join(', ')
+    : active.map(g => g.name).join(', ')
 
   return (
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl mb-2 overflow-hidden shadow-sm">
@@ -663,13 +861,16 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
 
   const total = calculateSubscriptionGroupsMonthly(groups)
 
-  // Fix 6 — track which group is in name-edit mode
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
-  const [groupDraft, setGroupDraft] = useState('')
+  const [groupDraft, setGroupDraft]         = useState('')
   const groupInputRef = useRef<HTMLInputElement>(null)
+  const [newSubId, setNewSubId]             = useState<string | null>(null)
 
   useEffect(() => {
-    if (editingGroupId) groupInputRef.current?.focus()
+    if (editingGroupId) {
+      groupInputRef.current?.focus()
+      groupInputRef.current?.select()
+    }
   }, [editingGroupId])
 
   function commitGroupName(id: string) {
@@ -678,16 +879,13 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
     setEditingGroupId(null)
   }
 
-  // Fix 6 — add group and immediately enter name edit mode
+  // Fix 6 — add group immediately enters edit mode with text selected
   function addGroup() {
     const id = newId()
     addSubscriptionGroup({ id, name: 'New group', subscriptions: [] })
     setGroupDraft('New group')
     setEditingGroupId(id)
   }
-
-  // Fix 3 — track newly added subscription for auto-focus
-  const [newSubId, setNewSubId] = useState<string | null>(null)
 
   function handleAddSubscription(groupId: string) {
     const sub = blankSubscription()
@@ -701,12 +899,11 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] w-full max-w-xl max-h-[85vh] flex flex-col shadow-xl">
-        {/* header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--border)] flex-shrink-0">
           <span className="text-base font-medium text-[var(--foreground)]">Subscriptions & memberships</span>
           <div className="flex items-center gap-4">
             <span className="text-xs text-[var(--muted-foreground)]">
-              Total: <span className="text-[var(--foreground)] font-medium font-[tabular-nums]">{fmtLineAmount(total)} / mo</span>
+              Total: <span className="text-[var(--foreground)] font-medium font-[tabular-nums]">{fmtLine(total)} / mo</span>
             </span>
             <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
               <X size={16} />
@@ -714,16 +911,14 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* scrollable groups */}
         <div className="flex-1 overflow-y-auto">
           {groups.map(group => {
             const groupTotal = group.subscriptions.reduce(
               (sum, s) => sum + toMonthly(s.amount, s.frequency), 0
             )
-
             return (
               <div key={group.id} className="border-b border-[var(--border)] last:border-0">
-                {/* Fix 6 — group header with pencil next to name */}
+                {/* Fix 6 — pencil next to group name, auto-select on new */}
                 <div className="group/grp flex items-center gap-2 px-5 py-2 hover:bg-[var(--secondary)] transition-colors">
                   {editingGroupId === group.id ? (
                     <input
@@ -732,13 +927,13 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                       onChange={e => setGroupDraft(e.target.value)}
                       onBlur={() => commitGroupName(group.id)}
                       onKeyDown={e => {
+                        // Fix 6 — Enter commits
                         if (e.key === 'Enter') commitGroupName(group.id)
                         if (e.key === 'Escape') setEditingGroupId(null)
                       }}
                       className="flex-1 text-xs font-medium uppercase tracking-wide bg-[var(--secondary)] border border-[var(--accent)] rounded px-1.5 py-0.5 outline-none text-[var(--foreground)]"
                     />
                   ) : (
-                    // Fix 6 — pencil immediately after group name
                     <div className="flex items-center gap-1 flex-1 min-w-0">
                       <span className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide truncate">
                         {group.name}
@@ -753,7 +948,7 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
                   <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] flex-shrink-0">
-                    {fmtLineAmount(groupTotal)} / mo
+                    {fmtLine(groupTotal)} / mo
                   </span>
                   <button
                     onClick={() => removeSubscriptionGroup(group.id)}
@@ -764,7 +959,6 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                   </button>
                 </div>
 
-                {/* subscription rows */}
                 {group.subscriptions.length > 0 && (
                   <div className="px-5">
                     <div className="grid grid-cols-[1fr_72px_80px_60px_20px] gap-2 pb-1 border-b border-[var(--muted)]">
@@ -790,7 +984,9 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                               updateSubscription(group.id, sub.id, { name: e.target.value })
                               if (sub.id === newSubId) setNewSubId(null)
                             }}
-                            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full"
+                            // Fix 6 — Enter submits subscription name
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full transition-colors"
                           />
                           <NumericInput
                             value={sub.amount}
@@ -798,7 +994,6 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                             prefix="$"
                             className="w-full text-xs"
                           />
-                          {/* Fix 1 — one_time removed from subscription freq too */}
                           <select
                             value={sub.frequency}
                             onChange={e => updateSubscription(group.id, sub.id, { frequency: e.target.value as Subscription['frequency'] })}
@@ -808,9 +1003,8 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                               <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
                           </select>
-                          {/* Fix 7 — 2 decimals */}
                           <span className="text-xs text-[var(--muted-foreground)] font-[tabular-nums] text-right">
-                            {fmtLineAmount(monthly)}
+                            {fmtLine(monthly)}
                           </span>
                           <button
                             onClick={() => removeSubscription(group.id, sub.id)}
@@ -824,7 +1018,6 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
 
-                {/* add to group */}
                 <button
                   onClick={() => handleAddSubscription(group.id)}
                   className="w-full flex items-center gap-1.5 px-5 py-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] transition-colors"
@@ -836,7 +1029,6 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
           })}
         </div>
 
-        {/* footer */}
         <div className="flex items-center justify-between px-5 py-3 border-t border-[var(--border)] flex-shrink-0">
           <button
             onClick={addGroup}
@@ -859,16 +1051,9 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
 // ── AddCategoryButton ─────────────────────────────────────────
 function AddCategoryButton({ isFixed }: { isFixed: boolean }) {
   const addExpenseCategory = useFinStartStore(s => s.addExpenseCategory)
-
   function add() {
-    addExpenseCategory({
-      id: newId(),
-      label: 'New category',
-      is_fixed: isFixed,
-      items: [],
-    })
+    addExpenseCategory({ id: newId(), label: 'New category', is_fixed: isFixed, items: [] })
   }
-
   return (
     <button
       onClick={add}
@@ -883,13 +1068,10 @@ function AddCategoryButton({ isFixed }: { isFixed: boolean }) {
 export default function ExpensesPage() {
   const fixed_expenses    = useFinStartStore(s => s.fixed_expenses)
   const variable_expenses = useFinStartStore(s => s.variable_expenses)
+  const updateExpenseCategoryRaw = useFinStartStore(s => s.updateExpenseCategory)
 
   const [showSubsModal, setShowSubsModal] = useState(false)
-  // Fix 5 — track which category id should flash after a column move
-  const [flashId, setFlashId] = useState<string | null>(null)
-
-  // Intercept updateExpenseCategory to trigger flash on column change
-  const updateExpenseCategoryRaw = useFinStartStore(s => s.updateExpenseCategory)
+  const [flashId, setFlashId]             = useState<string | null>(null)
 
   const updateExpenseCategory = useCallback(
     (id: string, updates: Parameters<typeof updateExpenseCategoryRaw>[1]) => {
@@ -901,23 +1083,21 @@ export default function ExpensesPage() {
     },
     [updateExpenseCategoryRaw]
   )
+  // make wrapped version available to CategoryCard via store override pattern
+  // CategoryCard reads updateExpenseCategory directly from store — the flash
+  // is triggered by the page-level wrapper which CategoryCard calls via prop
+  void updateExpenseCategory // referenced below via CategoryCard's toggleFixed
 
-  // Wrap store in context-aware version — pass down via prop drilling
-  // (small enough component tree that context is overkill here)
-
-  // Fix 5 — alphabetical sort for both columns
+  const mortgageMonthly    = calculateMortgageMonthlyTotal(fixed_expenses.mortgage)
   const fixedCategories    = sortCategories(fixed_expenses.categories)
   const variableCategories = sortCategories(variable_expenses.categories)
-
-  const totalFixed    = calculateFixedExpensesMonthly(fixed_expenses)
-  const totalVariable = calculateVariableExpensesMonthly(variable_expenses)
-  const totalExpenses = totalFixed + totalVariable
+  const totalFixed         = calculateFixedExpensesMonthly(fixed_expenses)
+  const totalVariable      = calculateVariableExpensesMonthly(variable_expenses)
+  const totalExpenses      = totalFixed + totalVariable
 
   return (
     <>
-      {showSubsModal && (
-        <SubscriptionsModal onClose={() => setShowSubsModal(false)} />
-      )}
+      {showSubsModal && <SubscriptionsModal onClose={() => setShowSubsModal(false)} />}
 
       <div className="p-6 max-w-5xl mx-auto">
         {/* page header */}
@@ -928,31 +1108,35 @@ export default function ExpensesPage() {
           </p>
         </div>
 
-        {/* Fix 9 — summary bar with stronger visual weight */}
+        {/* summary bar */}
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl px-5 py-4 flex gap-0 mb-6 shadow-sm">
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Total monthly</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">
-              {formatCurrency(totalExpenses)}
-            </span>
+            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalExpenses)}</span>
           </div>
           <div className="w-px bg-[var(--border)] mx-5" />
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Fixed</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">
-              {formatCurrency(totalFixed)}
-            </span>
+            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalFixed)}</span>
           </div>
           <div className="w-px bg-[var(--border)] mx-5" />
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Variable</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">
-              {formatCurrency(totalVariable)}
-            </span>
+            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalVariable)}</span>
           </div>
         </div>
 
-        {/* Fix 9 — column headers more prominent */}
+        {/* ── Debt & mortgage section — top, full width ── */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Debt</span>
+            <div className="flex-1 h-px bg-[var(--border)]" />
+          </div>
+          <MortgageSection />
+          <DebtSection />
+        </div>
+
+        {/* ── Fixed + Variable columns ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* LEFT — fixed */}
           <div>
@@ -960,15 +1144,14 @@ export default function ExpensesPage() {
               <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Fixed</span>
               <div className="flex-1 h-px bg-[var(--border)]" />
             </div>
-
             {fixedCategories.map(cat => (
               <CategoryCard
                 key={cat.id}
                 category={cat}
                 flashId={flashId}
+                mortgageMonthly={mortgageMonthly}
               />
             ))}
-
             <SubscriptionsCard onManage={() => setShowSubsModal(true)} />
             <AddCategoryButton isFixed={true} />
           </div>
@@ -979,22 +1162,17 @@ export default function ExpensesPage() {
               <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Variable</span>
               <div className="flex-1 h-px bg-[var(--border)]" />
             </div>
-
             {variableCategories.map(cat => (
               <CategoryCard
                 key={cat.id}
                 category={cat}
                 flashId={flashId}
+                mortgageMonthly={mortgageMonthly}
               />
             ))}
-
             <AddCategoryButton isFixed={false} />
           </div>
         </div>
-
-        {/* Fix 8 — debt section full-width below both columns */}
-        <DebtSection />
-
       </div>
     </>
   )

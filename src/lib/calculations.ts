@@ -7,6 +7,7 @@ import type {
   Liability,
   ExpenseLineItem,
   SubscriptionGroup,
+  MortgageData,
   ForecastAssumptions,
   FilingStatus,
 } from '@/store/useFinStartStore'
@@ -418,6 +419,24 @@ export function calculateSubscriptionGroupsMonthly(
   }, 0)
 }
 
+// Total monthly housing cost from mortgage — shown as linked line in Housing category
+// P&I + escrow taxes + escrow insurance + PMI
+export function calculateMortgageMonthlyTotal(mortgage: MortgageData): number {
+  if (!mortgage.is_active) return 0
+  return (
+    mortgage.pi_payment +
+    mortgage.escrow_taxes +
+    mortgage.escrow_insurance +
+    mortgage.escrow_pmi
+  )
+}
+
+// Mortgage liability total — P&I only, for debt payoff and DTI calculations
+export function calculateMortgagePIPayment(mortgage: MortgageData): number {
+  if (!mortgage.is_active) return 0
+  return mortgage.pi_payment
+}
+
 // ============================================================
 // EXPENSE TOTALS — updated for new category + line item structure
 // ============================================================
@@ -435,14 +454,22 @@ export function calculateFixedExpensesMonthly(fixed: FixedExpenses): number {
     fixed.subscription_groups
   )
 
-  // Debt payments — uses the actual monthly_payment (what user pays),
-  // not minimum_payment, for cash flow purposes
+  // Debt payments — uses actual monthly_payment (what user pays), not minimum
   const debt_total = fixed.debt_payments.reduce(
     (sum, d) => sum + d.monthly_payment,
     0
   )
 
-  return categories_total + subscription_total + debt_total
+  // Mortgage — P&I + full escrow (taxes, insurance, PMI) when active
+  // Escrow fields feed cash flow only — debt payoff module uses pi_payment separately
+  const mortgage_total = fixed.mortgage.is_active
+    ? fixed.mortgage.pi_payment +
+      fixed.mortgage.escrow_taxes +
+      fixed.mortgage.escrow_insurance +
+      fixed.mortgage.escrow_pmi
+    : 0
+
+  return categories_total + subscription_total + debt_total + mortgage_total
 }
 
 export function calculateVariableExpensesMonthly(
