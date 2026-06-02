@@ -40,7 +40,7 @@ export default function DashboardSidebar() {
       {/* Logo */}
       <div className="px-5 py-5 border-b border-[var(--border)]">
         <span className="text-base font-bold text-[var(--foreground)] tracking-tight">
-          FinStart
+          Alderways
         </span>
       </div>
 

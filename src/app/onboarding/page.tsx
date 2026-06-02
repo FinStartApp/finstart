@@ -6,6 +6,7 @@ import StepHousehold from '@/components/onboarding/StepHousehold'
 import StepPrimaryIncome from '@/components/onboarding/StepPrimaryIncome'
 import StepPartnerIncome from '@/components/onboarding/StepPartnerIncome'
 import StepForecast from '@/components/onboarding/StepForecast'
+import AlderWaysLogo from '@/components/ui/AlderWaysLogo'
 import { useFinStartStore } from '@/store/useFinStartStore'
 import { useRouter } from 'next/navigation'
 
@@ -82,8 +83,8 @@ export default function OnboardingPage() {
       <div className="sticky top-0 z-50 bg-[var(--background)] border-b border-[var(--border)] px-6 pt-5 pb-4">
         <div className="max-w-xl mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xl font-bold text-[var(--foreground)] tracking-tight">
-              FinStart
+            <span className="text-2xl font-bold tracking-tight" style={{ color: '#0D223B', letterSpacing: '-0.4px' }}>
+              Alderways
             </span>
             <span className="text-sm text-[var(--muted-foreground)]">
               Step {currentStep + 1} of {totalSteps}
@@ -96,11 +97,6 @@ export default function OnboardingPage() {
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.4, ease: 'easeInOut' }}
             />
-          </div>
-          <div className="mt-2">
-            <span className="text-xs text-[var(--muted-foreground)] font-medium uppercase tracking-wider">
-              {visibleSteps[currentStep]?.title}
-            </span>
           </div>
         </div>
       </div>
