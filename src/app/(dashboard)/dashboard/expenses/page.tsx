@@ -935,18 +935,18 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
             const groupTotal = group.subscriptions.reduce((sum, s) => sum + toMonthly(s.amount, s.frequency), 0)
             return (
               <div key={group.id} className="border-b border-border last:border-0">
-                <div className="group/grp flex items-center gap-2 px-5 py-2 hover:bg-hover transition-colors">
+                <div className="group/grp flex items-center gap-2 px-5 py-2.5 bg-secondary hover:bg-hover transition-colors">
                   {editingGroupId === group.id ? (
                     <input
                       ref={groupInputRef} value={groupDraft}
                       onChange={e => setGroupDraft(e.target.value)}
                       onBlur={() => commitGroupName(group.id)}
                       onKeyDown={e => { if (e.key === 'Enter') commitGroupName(group.id); if (e.key === 'Escape') setEditingGroupId(null) }}
-                      className="flex-1 text-xs font-semibold uppercase tracking-wide bg-card border border-accent rounded px-1.5 py-0.5 outline-none text-foreground"
+                      className="flex-1 text-xs font-bold uppercase tracking-wide bg-card border border-accent rounded px-1.5 py-0.5 outline-none text-foreground"
                     />
                   ) : (
                     <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide truncate">{group.name}</span>
+                      <span className="text-[11px] font-bold text-foreground uppercase tracking-wide truncate">{group.name}</span>
                       <button
                         onClick={() => { setGroupDraft(group.name); setEditingGroupId(group.id) }}
                         className="opacity-0 group-hover/grp:opacity-100 transition-opacity text-muted-foreground hover:text-accent flex-shrink-0"
@@ -955,7 +955,7 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                       </button>
                     </div>
                   )}
-                  <span className="text-[11px] text-muted-foreground font-[tabular-nums] flex-shrink-0">{fmtLine(groupTotal)} / mo</span>
+                  <span className="text-sm font-bold text-foreground font-[tabular-nums] flex-shrink-0">{fmtLine(groupTotal)} / mo</span>
                   <button
                     onClick={() => removeSubscriptionGroup(group.id)}
                     className="opacity-0 group-hover/grp:opacity-100 transition-opacity text-muted-foreground hover:text-negative p-0.5 flex-shrink-0"
