@@ -1,15 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, X, ArrowRight, Pencil, ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { Plus, X, ArrowRight, Pencil, ChevronDown, ChevronUp } from 'lucide-react'
 import { useFinStartStore } from '@/store/useFinStartStore'
 import type {
   ExpenseCategory,
   ExpenseLineItem,
   DebtPayment,
-  SubscriptionGroup,
   Subscription,
-  MortgageData,
 } from '@/store/useFinStartStore'
 import {
   resolveLineItemMonthly,
@@ -28,24 +26,15 @@ function newId() {
 
 function blankLineItem(label = ''): ExpenseLineItem {
   return {
-    id: newId(),
-    label,
-    amount: 0,
-    frequency: 'monthly',
-    use_monthly_detail: false,
-    monthly_amounts: Array(12).fill(0),
+    id: newId(), label, amount: 0, frequency: 'monthly',
+    use_monthly_detail: false, monthly_amounts: Array(12).fill(0),
   }
 }
 
 function blankDebt(): DebtPayment {
   return {
-    id: newId(),
-    label: '',
-    balance: 0,
-    interest_rate: 0,
-    monthly_payment: 0,
-    minimum_payment: 0,
-    type: 'other',
+    id: newId(), label: '', balance: 0, interest_rate: 0,
+    monthly_payment: 0, minimum_payment: 0, type: 'other',
   }
 }
 
@@ -67,36 +56,38 @@ const FREQ_OPTIONS: { value: ExpenseLineItem['frequency']; label: string }[] = [
   { value: 'annual',    label: '/ yr'  },
 ]
 
-// Fix 7 — 2 decimals on line-level amounts; summary bar stays whole numbers
 function fmtLine(n: number): string {
   return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(n)
 }
 
+// Brand-spec input classes — white bg, visible border, matches onboarding text input spec
+const inputCls = 'bg-white border border-[var(--border)] focus:border-[var(--accent)] rounded px-1.5 py-1 outline-none text-right font-[tabular-nums] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] transition-colors text-xs'
+const textInputCls = 'bg-white border border-[var(--border)] focus:border-[var(--accent)] rounded px-2 py-1 outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] transition-colors text-xs w-full'
+
+// ── Tooltip — instant CSS hover, no browser delay ─────────────
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="relative inline-flex group/tip">
+      {children}
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-[11px] leading-snug px-2.5 py-1.5 text-center opacity-0 group-hover/tip:opacity-100 transition-opacity duration-75 z-50 shadow-md whitespace-normal">
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[var(--primary)]" />
+      </span>
+    </span>
+  )
+}
+
 // ── NumericInput ──────────────────────────────────────────────
-// Fix 8 — decimals prop controls display precision
 function NumericInput({
-  value,
-  onChange,
-  className = '',
-  prefix = '',
-  suffix = '',
-  decimals = 2,
-  placeholder = '0.00',
-  autoFocus = false,
+  value, onChange, className = '', prefix = '', suffix = '',
+  decimals = 2, placeholder = '0.00', autoFocus = false,
 }: {
-  value: number
-  onChange: (v: number) => void
-  className?: string
-  prefix?: string
-  suffix?: string
-  decimals?: number
-  placeholder?: string
-  autoFocus?: boolean
+  value: number; onChange: (v: number) => void; className?: string
+  prefix?: string; suffix?: string; decimals?: number
+  placeholder?: string; autoFocus?: boolean
 }) {
   const [focused, setFocused] = useState(false)
   const [raw, setRaw] = useState('')
@@ -108,54 +99,34 @@ function NumericInput({
 
   const displayValue = focused
     ? raw
-    : value === 0
-    ? ''
-    : `${prefix}${value.toLocaleString('en-US', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}${suffix}`
+    : value === 0 ? ''
+    : `${prefix}${value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${suffix}`
 
   return (
     <input
-      ref={ref}
-      type="text"
-      inputMode="decimal"
-      value={displayValue}
-      placeholder={placeholder}
+      ref={ref} type="text" inputMode="decimal"
+      value={displayValue} placeholder={placeholder}
       onFocus={() => { setRaw(value === 0 ? '' : String(value)); setFocused(true) }}
       onChange={e => setRaw(e.target.value.replace(/[^0-9.]/g, ''))}
-      onBlur={() => {
-        const parsed = parseFloat(raw)
-        onChange(isNaN(parsed) ? 0 : parsed)
-        setFocused(false)
-      }}
+      onBlur={() => { const p = parseFloat(raw); onChange(isNaN(p) ? 0 : p); setFocused(false) }}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-      className={`bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 outline-none text-right font-[tabular-nums] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] transition-colors ${className}`}
+      className={`${inputCls} ${className}`}
     />
   )
 }
 
-// ── EditableLabel — pencil icon, autoFocus, double-click ──────
+// ── EditableLabel ─────────────────────────────────────────────
 function EditableLabel({
-  value,
-  onSave,
-  className = '',
-  inputClassName = '',
-  autoFocus = false,
-  onBlurWithEmpty,
+  value, onSave, className = '', inputClassName = '',
+  autoFocus = false, onBlurWithEmpty,
 }: {
-  value: string
-  onSave: (v: string) => void
-  className?: string
-  inputClassName?: string
-  autoFocus?: boolean
-  onBlurWithEmpty?: () => void
+  value: string; onSave: (v: string) => void; className?: string
+  inputClassName?: string; autoFocus?: boolean; onBlurWithEmpty?: () => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft]     = useState(value)
+  const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLInputElement>(null)
 
-  // Fix 3 — enter edit mode on mount if autoFocus
   useEffect(() => {
     if (autoFocus) { setDraft(value); setEditing(true) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,26 +137,18 @@ function EditableLabel({
   }, [editing])
 
   function commit() {
-    const trimmed = draft.trim()
-    if (trimmed) { onSave(trimmed); setEditing(false) }
-    else {
-      if (onBlurWithEmpty) onBlurWithEmpty()
-      else { setDraft(value); setEditing(false) }
-    }
+    const t = draft.trim()
+    if (t) { onSave(t); setEditing(false) }
+    else { if (onBlurWithEmpty) onBlurWithEmpty(); else { setDraft(value); setEditing(false) } }
   }
 
   if (editing) {
     return (
-      <input
-        ref={ref}
-        value={draft}
+      <input ref={ref} value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter') commit()
-          if (e.key === 'Escape') { setDraft(value); setEditing(false) }
-        }}
-        className={`bg-[var(--secondary)] border border-[var(--accent)] rounded px-1.5 py-0.5 outline-none text-[var(--foreground)] ${inputClassName}`}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
+        className={`bg-white border border-[var(--accent)] rounded px-1.5 py-0.5 outline-none text-[var(--foreground)] text-sm ${inputClassName}`}
         style={{ minWidth: 80 }}
       />
     )
@@ -193,14 +156,9 @@ function EditableLabel({
 
   return (
     <span className={`group/lbl flex items-center gap-1 min-w-0 ${className}`}>
-      {/* Fix 3 — double-click re-enabled */}
-      <span
-        className="truncate cursor-default"
-        onDoubleClick={() => { setDraft(value); setEditing(true) }}
-      >
+      <span className="truncate cursor-default" onDoubleClick={() => { setDraft(value); setEditing(true) }}>
         {value}
       </span>
-      {/* Fix 4 — pencil always in DOM, visible on hover */}
       <button
         onClick={e => { e.stopPropagation(); setDraft(value); setEditing(true) }}
         className="opacity-0 group-hover/lbl:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0"
@@ -214,31 +172,26 @@ function EditableLabel({
 
 // ── MonthlyDetailPanel ────────────────────────────────────────
 function MonthlyDetailPanel({
-  item,
-  categoryId,
-  onClose,
+  item, categoryId, onClose,
 }: {
-  item: ExpenseLineItem
-  categoryId: string
-  onClose: () => void
+  item: ExpenseLineItem; categoryId: string; onClose: () => void
 }) {
   const updateExpenseLineItem = useFinStartStore(s => s.updateExpenseLineItem)
 
-  function setMonth(index: number, val: number) {
+  function setMonth(i: number, val: number) {
     const next = [...item.monthly_amounts]
-    next[index] = val
+    next[i] = val
     updateExpenseLineItem(categoryId, item.id, { monthly_amounts: next })
   }
 
-  // Fix 2 — clear zeros all 12 months and exits monthly detail mode
   function clearDetail() {
     updateExpenseLineItem(categoryId, item.id, {
-      use_monthly_detail: false,
-      monthly_amounts: Array(12).fill(0),
+      use_monthly_detail: false, monthly_amounts: Array(12).fill(0),
     })
     onClose()
   }
 
+  const hasData = item.monthly_amounts.some(v => v > 0)
   const avg = item.monthly_amounts.reduce((a, b) => a + b, 0) / 12
 
   return (
@@ -247,27 +200,23 @@ function MonthlyDetailPanel({
         {MONTHS.map((mo, i) => (
           <div key={mo} className="flex flex-col gap-0.5">
             <span className="text-[10px] text-[var(--muted-foreground)] text-center uppercase tracking-wide">{mo}</span>
-            <NumericInput
-              value={item.monthly_amounts[i] ?? 0}
-              onChange={v => setMonth(i, v)}
-              className="w-full text-xs"
-              placeholder="0"
-            />
+            <NumericInput value={item.monthly_amounts[i] ?? 0} onChange={v => setMonth(i, v)} className="w-full" placeholder="0" />
           </div>
         ))}
       </div>
       <div className="flex items-center justify-between mt-1">
-        <button
-          onClick={clearDetail}
-          className="text-[11px] text-[var(--muted-foreground)] hover:text-[var(--negative)] transition-colors"
-        >
-          Clear monthly detail
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} className="text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+            ↑ collapse
+          </button>
+          {hasData && (
+            <button onClick={clearDetail} className="text-[11px] text-[var(--muted-foreground)] hover:text-[var(--negative)] transition-colors">
+              clear all
+            </button>
+          )}
+        </div>
         <span className="text-xs text-[var(--muted-foreground)]">
-          Monthly avg:{' '}
-          <span className="font-medium text-[var(--foreground)] font-[tabular-nums]">
-            {fmtLine(avg)}
-          </span>
+          avg / mo: <span className="font-semibold text-[var(--foreground)] font-[tabular-nums]">{fmtLine(avg)}</span>
         </span>
       </div>
     </div>
@@ -276,56 +225,43 @@ function MonthlyDetailPanel({
 
 // ── LineItemRow ───────────────────────────────────────────────
 function LineItemRow({
-  item,
-  categoryId,
-  autoFocusLabel = false,
-  locked = false,
-  lockedLabel,
+  item, categoryId, autoFocusLabel = false, locked = false, lockedLabel,
 }: {
-  item: ExpenseLineItem
-  categoryId: string
-  autoFocusLabel?: boolean
-  locked?: boolean        // mortgage-linked line — read only
-  lockedLabel?: string    // override display label for locked lines
+  item: ExpenseLineItem; categoryId: string; autoFocusLabel?: boolean
+  locked?: boolean; lockedLabel?: string
 }) {
   const updateExpenseLineItem = useFinStartStore(s => s.updateExpenseLineItem)
   const removeExpenseLineItem = useFinStartStore(s => s.removeExpenseLineItem)
   const [panelOpen, setPanelOpen] = useState(false)
 
-  // Fix 4 — monthly detail only active if at least one month > 0
-  const hasMonthlyData = item.monthly_amounts.some(v => v > 0)
+  const hasMonthlyData  = item.monthly_amounts.some(v => v > 0)
   const isMonthlyActive = item.use_monthly_detail && hasMonthlyData
-  const monthly = resolveLineItemMonthly(item)
+  const monthly         = resolveLineItemMonthly(item)
 
   function update(updates: Partial<ExpenseLineItem>) {
     updateExpenseLineItem(categoryId, item.id, updates)
   }
 
-  function toggleMonthlyDetail() {
-    if (isMonthlyActive) {
-      setPanelOpen(p => !p)
-    } else {
-      update({ use_monthly_detail: true })
-      setPanelOpen(true)
-    }
+  function togglePanel() {
+    if (!item.use_monthly_detail) update({ use_monthly_detail: true })
+    setPanelOpen(p => !p)
   }
 
-  // locked = mortgage-linked line — show read-only row with badge
+  // Locked mortgage-linked line
   if (locked) {
     return (
-      <div className="flex items-center gap-1.5 py-1.5 border-b border-[var(--muted)] last:border-0 opacity-90">
+      <div className="flex items-center gap-1.5 py-1.5 border-b border-[var(--muted)] last:border-0">
         <span className="w-4 flex-shrink-0" />
         <span className="flex-1 text-xs text-[var(--foreground)] flex items-center gap-1.5 min-w-0">
           <span className="truncate">{lockedLabel ?? item.label}</span>
-          <span className="text-[9px] bg-[#DDE6F5] text-[var(--accent)] border border-[var(--accent)]/30 rounded px-1.5 py-0.5 flex-shrink-0 font-medium tracking-wide uppercase">
+          <span className="text-[9px] bg-[#DDE6F5] text-[var(--accent)] border border-[var(--accent)]/30 rounded px-1.5 py-0.5 flex-shrink-0 font-semibold tracking-wide uppercase">
             linked
           </span>
         </span>
-        <span className="text-xs font-medium text-[var(--foreground)] font-[tabular-nums]">
-          {fmtLine(monthly)}
-        </span>
-        <span className="text-[11px] text-[var(--muted-foreground)] min-w-[44px]" />
-        <span className="w-[52px]" />
+        {/* Fixed-width zone matching normal input zone */}
+        <div className="w-[232px] flex items-center justify-end">
+          <span className="text-xs font-semibold text-[var(--foreground)] font-[tabular-nums]">{fmtLine(monthly)}</span>
+        </div>
       </div>
     )
   }
@@ -333,16 +269,13 @@ function LineItemRow({
   return (
     <>
       <div className="group flex items-center gap-1.5 py-1.5 border-b border-[var(--muted)] last:border-0">
-        {/* remove */}
         <button
           onClick={() => removeExpenseLineItem(categoryId, item.id)}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex-shrink-0 w-4 flex items-center justify-center"
-          title="Remove line"
         >
           <X size={11} />
         </button>
 
-        {/* label */}
         <EditableLabel
           value={item.label || 'Untitled'}
           onSave={v => update({ label: v })}
@@ -351,100 +284,87 @@ function LineItemRow({
           inputClassName="text-xs w-full"
         />
 
-        {/* Fix 2 + 5 — monthly detail active state aligned with inputs */}
-        {isMonthlyActive ? (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-[var(--secondary)] border border-[var(--border)] rounded px-2 py-1">
-              <span className="text-[11px] text-[var(--muted-foreground)]">avg</span>
-              <span className="text-xs font-medium text-[var(--foreground)] font-[tabular-nums]">
-                {fmtLine(monthly)}
+        {/* Fixed-width input zone — both states always exactly 232px wide */}
+        <div className="w-[232px] flex items-center gap-1.5 flex-shrink-0">
+          {isMonthlyActive ? (
+            <>
+              {/* avg pill — same width as amount+freq+converted zone */}
+              <div className="flex items-center justify-between flex-1 bg-white border border-[var(--border)] rounded px-2 py-1 h-[26px]">
+                <span className="text-[10px] text-[var(--muted-foreground)]">avg / mo</span>
+                <span className="text-xs font-semibold text-[var(--foreground)] font-[tabular-nums]">{fmtLine(monthly)}</span>
+              </div>
+              <button
+                onClick={togglePanel}
+                className="text-[10px] text-[var(--accent)] hover:underline whitespace-nowrap w-12 text-right flex-shrink-0"
+              >
+                {panelOpen ? '↑ hide' : '↓ edit'}
+              </button>
+            </>
+          ) : (
+            <>
+              <NumericInput
+                value={item.amount}
+                onChange={v => update({ amount: v })}
+                className="w-20 flex-shrink-0"
+                decimals={2}
+                placeholder="0.00"
+              />
+              <select
+                value={item.frequency}
+                onChange={e => update({ frequency: e.target.value as ExpenseLineItem['frequency'] })}
+                className="text-[11px] text-[var(--muted-foreground)] bg-white border border-[var(--border)] rounded px-1 py-1 cursor-pointer outline-none flex-shrink-0"
+              >
+                {FREQ_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] w-[44px] text-right flex-shrink-0">
+                {item.frequency === 'monthly' ? '' : fmtLine(monthly)}
               </span>
-            </div>
-            <button
-              onClick={toggleMonthlyDetail}
-              className="text-[10px] text-[var(--accent)] hover:underline whitespace-nowrap"
-            >
-              {panelOpen ? 'hide' : 'edit'}
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Fix 8 — 2 decimal places on amount input */}
-            <NumericInput
-              value={item.amount}
-              onChange={v => update({ amount: v })}
-              className="w-16 text-xs"
-              decimals={2}
-              placeholder="0.00"
-            />
-            <select
-              value={item.frequency}
-              onChange={e => update({ frequency: e.target.value as ExpenseLineItem['frequency'] })}
-              className="text-[11px] text-[var(--muted-foreground)] bg-[var(--secondary)] border-none rounded px-1 py-1 cursor-pointer outline-none"
-            >
-              {FREQ_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            {/* Fix 7 — 2 decimal places on converted monthly amount */}
-            <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] min-w-[52px] text-right">
-              {item.frequency === 'monthly' ? '' : fmtLine(monthly)}
-            </span>
-            {/* Fix 2 — labeled "by month" button */}
-            <button
-              onClick={toggleMonthlyDetail}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0 border border-[var(--border)] rounded px-1.5 py-0.5 whitespace-nowrap"
-              title="Enter amounts by month"
-            >
-              by month
-            </button>
-          </>
-        )}
+              <button
+                onClick={togglePanel}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0 border border-dashed border-[var(--border)] rounded px-1.5 py-0.5 whitespace-nowrap bg-white"
+              >
+                by month
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {panelOpen && item.use_monthly_detail && (
-        <MonthlyDetailPanel
-          item={item}
-          categoryId={categoryId}
-          onClose={() => setPanelOpen(false)}
-        />
+      {panelOpen && (
+        <MonthlyDetailPanel item={item} categoryId={categoryId} onClose={() => setPanelOpen(false)} />
       )}
     </>
   )
 }
 
-// ── CategoryCard ──────────────────────────────────────────────
+// ── CategoryCard — collapsed by default ───────────────────────
 function CategoryCard({
-  category,
-  flashId,
-  mortgageMonthly,
+  category, flashId, mortgageMonthly, defaultOpen = false,
 }: {
-  category: ExpenseCategory
-  flashId: string | null
-  mortgageMonthly: number   // > 0 means show linked mortgage line in Housing
+  category: ExpenseCategory; flashId: string | null
+  mortgageMonthly: number; defaultOpen?: boolean
 }) {
   const updateExpenseCategory = useFinStartStore(s => s.updateExpenseCategory)
   const removeExpenseCategory = useFinStartStore(s => s.removeExpenseCategory)
   const addExpenseLineItem    = useFinStartStore(s => s.addExpenseLineItem)
 
+  const [open, setOpen]               = useState(defaultOpen)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [newItemId, setNewItemId]         = useState<string | null>(null)
+  const [newItemId, setNewItemId]     = useState<string | null>(null)
 
-  const isHousing  = category.label.toLowerCase() === 'housing'
-  const isFlashing = flashId === category.id
-
-  // mortgage linked line only appears inside the Housing category
+  const isHousing        = category.label.toLowerCase() === 'housing'
+  const isFlashing       = flashId === category.id
   const showMortgageLine = isHousing && mortgageMonthly > 0
 
-  const itemsTotal = category.items.reduce(
-    (sum, item) => sum + resolveLineItemMonthly(item), 0
-  )
-  const total = itemsTotal + (showMortgageLine ? mortgageMonthly : 0)
+  const itemsTotal = category.items.reduce((sum, item) => sum + resolveLineItemMonthly(item), 0)
+  const total      = itemsTotal + (showMortgageLine ? mortgageMonthly : 0)
+  const isEmpty    = total === 0
 
   function addLine() {
     const item = blankLineItem('')
     addExpenseLineItem(category.id, item)
     setNewItemId(item.id)
+    setOpen(true)
   }
 
   function toggleFixed(makeFixed: boolean) {
@@ -453,65 +373,72 @@ function CategoryCard({
 
   function handleDelete() {
     if ((category.items.length > 0 || showMortgageLine) && !confirmDelete) {
-      setConfirmDelete(true)
-      return
+      setConfirmDelete(true); return
     }
     removeExpenseCategory(category.id)
   }
 
-  // Build a synthetic locked line item for the mortgage link display
   const mortgageLinkedItem: ExpenseLineItem = {
-    id: '__mortgage_linked__',
-    label: 'Mortgage (P&I + Escrow)',
-    amount: mortgageMonthly,
-    frequency: 'monthly',
-    use_monthly_detail: false,
-    monthly_amounts: Array(12).fill(0),
+    id: '__mortgage_linked__', label: 'Mortgage (P&I + Escrow)',
+    amount: mortgageMonthly, frequency: 'monthly',
+    use_monthly_detail: false, monthly_amounts: Array(12).fill(0),
   }
 
   return (
     <div
-      className={`border rounded-xl mb-2 overflow-hidden shadow-sm transition-all duration-700 ${
+      className={`border rounded-xl mb-2 overflow-hidden transition-all duration-700 ${
         isFlashing
-          ? 'bg-[#DDE6F5] border-[var(--accent)]'
-          : 'bg-[var(--card)] border-[var(--border)]'
+          ? 'bg-[#DDE6F5] border-[var(--accent)] shadow-sm'
+          : 'bg-white border-[var(--border)] shadow-sm'
       }`}
     >
-      {/* header */}
-      <div className="group flex items-center gap-2 px-3 py-2.5 hover:bg-[var(--secondary)] transition-colors">
-        <div className="flex border border-[var(--border)] rounded-full overflow-hidden opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      {/* Header — always visible, click to expand */}
+      <div
+        className="group flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-[var(--secondary)] transition-colors select-none"
+        onClick={() => setOpen(o => !o)}
+      >
+        {/* F/V pill — stop propagation so clicking pill doesn't toggle card */}
+        <div
+          className="flex border border-[var(--border)] rounded-full overflow-hidden opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          onClick={e => e.stopPropagation()}
+        >
           <button
             onClick={() => toggleFixed(true)}
-            className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              category.is_fixed
-                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]'
+            className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+              category.is_fixed ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]'
             }`}
             title="Mark as Fixed"
           >F</button>
           <button
             onClick={() => toggleFixed(false)}
-            className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              !category.is_fixed
-                ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]'
+            className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+              !category.is_fixed ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]'
             }`}
             title="Mark as Variable"
           >V</button>
         </div>
 
-        <EditableLabel
-          value={category.label}
-          onSave={v => updateExpenseCategory(category.id, { label: v })}
-          className="flex-1 text-sm font-medium text-[var(--foreground)]"
-          inputClassName="text-sm font-medium w-full"
-        />
+        {/* Name */}
+        <div onClick={e => e.stopPropagation()} className="flex-1 min-w-0">
+          <EditableLabel
+            value={category.label}
+            onSave={v => updateExpenseCategory(category.id, { label: v })}
+            className="text-sm font-semibold text-[var(--foreground)]"
+            inputClassName="text-sm font-semibold w-full"
+          />
+        </div>
 
-        <span className="text-sm font-medium text-[var(--foreground)] font-[tabular-nums] min-w-[60px] text-right">
+        {/* Total pill */}
+        <span className={`text-xs font-semibold font-[tabular-nums] px-2 py-0.5 rounded-full flex-shrink-0 ${
+          isEmpty
+            ? 'text-[var(--muted-foreground)]'
+            : 'bg-[#DDE6F5] text-[var(--primary)]'
+        }`}>
           {formatCurrency(total)}
         </span>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Delete — hover only */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
           {confirmDelete ? (
             <>
               <span className="text-[11px] text-[var(--negative)]">Remove?</span>
@@ -520,43 +447,51 @@ function CategoryCard({
               <button onClick={() => setConfirmDelete(false)} className="text-[11px] text-[var(--muted-foreground)] hover:underline">No</button>
             </>
           ) : (
-            <button onClick={handleDelete} className="text-[var(--muted-foreground)] hover:text-[var(--negative)] p-0.5 rounded transition-colors" title="Remove category">
+            <button onClick={handleDelete} className="text-[var(--muted-foreground)] hover:text-[var(--negative)] p-0.5 rounded transition-colors">
               <X size={13} />
             </button>
           )}
         </div>
+
+        {/* Chevron */}
+        <div className="text-[var(--muted-foreground)] flex-shrink-0 ml-1">
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </div>
       </div>
 
-      {/* line items */}
-      {(category.items.length > 0 || showMortgageLine) && (
-        <div className="px-3 border-t border-[var(--border)]">
-          {/* mortgage linked line — always first in Housing */}
-          {showMortgageLine && (
-            <LineItemRow
-              item={mortgageLinkedItem}
-              categoryId={category.id}
-              locked={true}
-              lockedLabel="Mortgage (P&I + Escrow)"
-            />
+      {/* Expanded content */}
+      {open && (
+        <>
+          {(category.items.length > 0 || showMortgageLine) && (
+            <div className="px-3 border-t border-[var(--border)] bg-[var(--secondary)]">
+              {showMortgageLine && (
+                <LineItemRow item={mortgageLinkedItem} categoryId={category.id} locked lockedLabel="Mortgage (P&I + Escrow)" />
+              )}
+              {category.items.map(item => (
+                <LineItemRow
+                  key={item.id} item={item} categoryId={category.id}
+                  autoFocusLabel={item.id === newItemId}
+                />
+              ))}
+            </div>
           )}
-          {category.items.map(item => (
-            <LineItemRow
-              key={item.id}
-              item={item}
-              categoryId={category.id}
-              autoFocusLabel={item.id === newItemId}
-            />
-          ))}
-        </div>
-      )}
 
-      {/* add line */}
-      <button
-        onClick={addLine}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border-t border-[var(--muted)] transition-colors"
-      >
-        <Plus size={11} /> add line
-      </button>
+          {/* Empty state */}
+          {category.items.length === 0 && !showMortgageLine && (
+            <div className="px-3 py-3 border-t border-[var(--border)] bg-[var(--secondary)]">
+              <p className="text-xs text-[var(--muted-foreground)] italic">No line items yet — add one below.</p>
+            </div>
+          )}
+
+          {/* Add line */}
+          <button
+            onClick={addLine}
+            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border-t border-dashed border-[var(--border)] bg-white transition-colors"
+          >
+            <Plus size={11} /> add line
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -565,7 +500,6 @@ function CategoryCard({
 function MortgageSection() {
   const mortgage       = useFinStartStore(s => s.fixed_expenses.mortgage)
   const updateMortgage = useFinStartStore(s => s.updateMortgage)
-
   const [showEscrow, setShowEscrow] = useState(false)
 
   const totalMonthly = calculateMortgageMonthlyTotal(mortgage)
@@ -574,11 +508,9 @@ function MortgageSection() {
 
   function toggle(checked: boolean) {
     if (!checked && mortgage.balance > 0) {
-      // has data — ask before clearing
       if (!window.confirm('Remove mortgage? This will clear all mortgage data and unlink it from Housing.')) return
       updateMortgage({
-        is_active: false,
-        balance: 0, interest_rate: 0,
+        is_active: false, balance: 0, interest_rate: 0,
         pi_payment: 0, minimum_pi_payment: 0,
         escrow_taxes: 0, escrow_insurance: 0, escrow_pmi: 0,
       })
@@ -589,14 +521,12 @@ function MortgageSection() {
 
   return (
     <div className="mb-3">
-      {/* checkbox row */}
+      {/* Checkbox row */}
       <label className="flex items-center gap-2.5 cursor-pointer group select-none mb-2">
         <div
           onClick={() => toggle(!mortgage.is_active)}
           className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer flex-shrink-0 ${
-            mortgage.is_active
-              ? 'bg-[var(--primary)] border-[var(--primary)]'
-              : 'border-[var(--border)] group-hover:border-[var(--accent)]'
+            mortgage.is_active ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border)] group-hover:border-[var(--accent)]'
           }`}
         >
           {mortgage.is_active && (
@@ -605,72 +535,43 @@ function MortgageSection() {
             </svg>
           )}
         </div>
-        <span className="text-sm font-medium text-[var(--foreground)]">I have a mortgage</span>
-        <span className="text-xs text-[var(--muted-foreground)]">
-          — your payment will appear automatically in Housing expenses
-        </span>
+        <span className="text-sm font-semibold text-[var(--foreground)]">I have a mortgage</span>
+        <span className="text-xs text-[var(--muted-foreground)]">— payment appears automatically in Housing</span>
       </label>
 
       {mortgage.is_active && (
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
-          {/* P&I row — always visible when active */}
+        <div className="bg-white border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
+          {/* P&I fields */}
           <div className="px-4 py-3 border-b border-[var(--muted)]">
-            <div className="grid grid-cols-[1fr_100px_72px_88px_88px] gap-3 items-end">
+            <div className="grid grid-cols-[1fr_96px_80px_96px_96px] gap-3 items-end">
               <div>
-                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Loan balance</p>
-                <NumericInput
-                  value={mortgage.balance}
-                  onChange={v => updateMortgage({ balance: v })}
-                  prefix="$"
-                  className="w-full text-xs"
-                  placeholder="0.00"
-                />
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">Loan balance</p>
+                <NumericInput value={mortgage.balance} onChange={v => updateMortgage({ balance: v })} prefix="$" className="w-full" />
               </div>
               <div>
-                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Rate</p>
-                <NumericInput
-                  value={mortgage.interest_rate}
-                  onChange={v => updateMortgage({ interest_rate: v })}
-                  suffix="%"
-                  decimals={3}
-                  className="w-full text-xs"
-                  placeholder="0.000"
-                />
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">Rate</p>
+                <NumericInput value={mortgage.interest_rate} onChange={v => updateMortgage({ interest_rate: v })} suffix="%" decimals={3} className="w-full" placeholder="0.000" />
               </div>
               <div>
-                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">P&amp;I payment</p>
-                <NumericInput
-                  value={mortgage.pi_payment}
-                  onChange={v => updateMortgage({ pi_payment: v })}
-                  prefix="$"
-                  className="w-full text-xs"
-                  placeholder="0.00"
-                />
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">P&amp;I pmt</p>
+                <NumericInput value={mortgage.pi_payment} onChange={v => updateMortgage({ pi_payment: v })} prefix="$" className="w-full" />
               </div>
               <div>
-                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Min. P&amp;I</p>
-                <NumericInput
-                  value={mortgage.minimum_pi_payment}
-                  onChange={v => updateMortgage({ minimum_pi_payment: v })}
-                  prefix="$"
-                  className="w-full text-xs"
-                  placeholder="0.00"
-                />
+                <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">Min. P&amp;I</p>
+                <NumericInput value={mortgage.minimum_pi_payment} onChange={v => updateMortgage({ minimum_pi_payment: v })} prefix="$" className="w-full" />
               </div>
             </div>
           </div>
 
-          {/* escrow toggle row */}
+          {/* Escrow toggle */}
           <button
             onClick={() => setShowEscrow(s => !s)}
-            className="w-full flex items-center justify-between px-4 py-2 hover:bg-[var(--secondary)] transition-colors"
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[var(--secondary)] transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--muted-foreground)]">
-                Escrow — property taxes, insurance, PMI
-              </span>
+              <span className="text-xs text-[var(--muted-foreground)]">Escrow — property taxes, insurance, PMI</span>
               {hasEscrow && (
-                <span className="text-[10px] text-[var(--accent)] font-medium font-[tabular-nums]">
+                <span className="text-[10px] text-[var(--primary)] font-semibold font-[tabular-nums] bg-[#DDE6F5] px-1.5 py-0.5 rounded">
                   {fmtLine(escrowTotal)} / mo
                 </span>
               )}
@@ -678,59 +579,37 @@ function MortgageSection() {
             {showEscrow ? <ChevronUp size={13} className="text-[var(--muted-foreground)]" /> : <ChevronDown size={13} className="text-[var(--muted-foreground)]" />}
           </button>
 
-          {/* escrow fields */}
           {showEscrow && (
             <div className="px-4 py-3 border-t border-[var(--muted)] bg-[var(--secondary)]">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Property taxes / mo</p>
-                  <NumericInput
-                    value={mortgage.escrow_taxes}
-                    onChange={v => updateMortgage({ escrow_taxes: v })}
-                    prefix="$"
-                    className="w-full text-xs"
-                    placeholder="0.00"
-                  />
-                  <p className="text-[10px] text-[var(--muted-foreground)] mt-1">Enter monthly equivalent</p>
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">Property taxes</p>
+                  <NumericInput value={mortgage.escrow_taxes} onChange={v => updateMortgage({ escrow_taxes: v })} prefix="$" className="w-full" />
+                  <p className="text-[10px] text-[var(--muted-foreground)] mt-1">Monthly equivalent</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Homeowner's insurance / mo</p>
-                  <NumericInput
-                    value={mortgage.escrow_insurance}
-                    onChange={v => updateMortgage({ escrow_insurance: v })}
-                    prefix="$"
-                    className="w-full text-xs"
-                    placeholder="0.00"
-                  />
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5">Homeowner's ins.</p>
+                  <NumericInput value={mortgage.escrow_insurance} onChange={v => updateMortgage({ escrow_insurance: v })} prefix="$" className="w-full" />
+                  <p className="text-[10px] text-[var(--muted-foreground)] mt-1">Monthly equivalent</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1 flex items-center gap-1">
-                    PMI / mo
-                    <span title="Required when your down payment was less than 20% of the home price. Disappears when your loan balance reaches 80% of the home's value.">
-                      <Info size={10} className="text-[var(--muted-foreground)] cursor-help" />
-                    </span>
+                  <p className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                    PMI
+                    <Tooltip text="Required when your down payment was less than 20% of the home price. Disappears when your loan balance reaches 80% of the home's value.">
+                      <span className="w-3.5 h-3.5 rounded-full bg-[var(--muted)] text-[var(--muted-foreground)] text-[9px] flex items-center justify-center cursor-help font-bold">?</span>
+                    </Tooltip>
                   </p>
-                  <NumericInput
-                    value={mortgage.escrow_pmi}
-                    onChange={v => updateMortgage({ escrow_pmi: v })}
-                    prefix="$"
-                    className="w-full text-xs"
-                    placeholder="0.00"
-                  />
+                  <NumericInput value={mortgage.escrow_pmi} onChange={v => updateMortgage({ escrow_pmi: v })} prefix="$" className="w-full" />
+                  <p className="text-[10px] text-[var(--muted-foreground)] mt-1">Monthly equivalent</p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* total row */}
           {totalMonthly > 0 && (
-            <div className="flex items-center justify-between px-4 py-2 border-t border-[var(--border)] bg-[var(--secondary)]">
-              <span className="text-[11px] text-[var(--muted-foreground)]">
-                Total monthly housing payment
-              </span>
-              <span className="text-sm font-medium text-[var(--foreground)] font-[tabular-nums]">
-                {fmtLine(totalMonthly)}
-              </span>
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--border)] bg-[var(--secondary)]">
+              <span className="text-xs text-[var(--muted-foreground)]">Total monthly housing payment</span>
+              <span className="text-sm font-semibold text-[var(--foreground)] font-[tabular-nums]">{fmtLine(totalMonthly)}</span>
             </div>
           )}
         </div>
@@ -749,33 +628,35 @@ function DebtSection() {
   const total = debts.reduce((sum, d) => sum + d.monthly_payment, 0)
 
   return (
-    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
+    // Navy left border accent — gives debt visual priority over category cards
+    <div className="bg-white border border-[var(--border)] border-l-4 border-l-[var(--primary)] rounded-xl overflow-hidden shadow-sm">
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] bg-[var(--secondary)]">
         <div>
-          <h2 className="text-sm font-medium text-[var(--foreground)]">Other debt payments</h2>
+          <h2 className="text-sm font-semibold text-[var(--foreground)]">Other debt payments</h2>
           <p className="text-[11px] text-[var(--muted-foreground)] mt-0.5">
             Auto loans, student loans, credit cards — balance and rate carry forward to the Debt Payoff planner
           </p>
         </div>
         <div className="text-right flex-shrink-0 ml-4">
           <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-wide block">Monthly total</span>
-          <span className="text-lg font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(total)}</span>
+          <span className="text-lg font-bold text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(total)}</span>
         </div>
       </div>
 
-      {/* column headers */}
-      <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)]">
-        <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">Name</span>
-        <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Balance</span>
-        <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Rate</span>
-        <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Payment</span>
-        <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Min. payment</span>
-        <span />
-      </div>
+      {debts.length > 0 && (
+        <div className="grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)] bg-[var(--secondary)]">
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">Name</span>
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Balance</span>
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Rate</span>
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Payment</span>
+          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide text-right">Min. pmt</span>
+          <span />
+        </div>
+      )}
 
       {debts.length === 0 && (
         <p className="px-5 py-4 text-xs text-[var(--muted-foreground)] italic">
-          No debts added yet.
+          No other debts added yet — auto loans, student loans, credit cards.
         </p>
       )}
 
@@ -784,21 +665,15 @@ function DebtSection() {
           key={debt.id}
           className="group grid grid-cols-[1fr_100px_64px_88px_88px_24px] gap-2 px-5 py-2 border-b border-[var(--muted)] last:border-0 items-center hover:bg-[var(--secondary)] transition-colors"
         >
-          <input
-            type="text"
-            value={debt.label}
-            placeholder="e.g. Student loan"
+          <input type="text" value={debt.label} placeholder="e.g. Student loan"
             onChange={e => updateDebtPayment(debt.id, { label: e.target.value })}
-            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-2 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full transition-colors"
+            className={textInputCls}
           />
-          <NumericInput value={debt.balance}          onChange={v => updateDebtPayment(debt.id, { balance: v })}          prefix="$"  className="w-full text-xs" />
-          <NumericInput value={debt.interest_rate}    onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}    suffix="%" decimals={2} className="w-full text-xs" placeholder="0.00" />
-          <NumericInput value={debt.monthly_payment}  onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })}  prefix="$"  className="w-full text-xs" />
-          <NumericInput value={debt.minimum_payment}  onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })}  prefix="$"  className="w-full text-xs" />
-          <button
-            onClick={() => removeDebtPayment(debt.id)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex items-center justify-center"
-          >
+          <NumericInput value={debt.balance}         onChange={v => updateDebtPayment(debt.id, { balance: v })}         prefix="$" className="w-full" />
+          <NumericInput value={debt.interest_rate}   onChange={v => updateDebtPayment(debt.id, { interest_rate: v })}   suffix="%" decimals={2} className="w-full" placeholder="0.00" />
+          <NumericInput value={debt.monthly_payment} onChange={v => updateDebtPayment(debt.id, { monthly_payment: v })} prefix="$" className="w-full" />
+          <NumericInput value={debt.minimum_payment} onChange={v => updateDebtPayment(debt.id, { minimum_payment: v })} prefix="$" className="w-full" />
+          <button onClick={() => removeDebtPayment(debt.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex items-center justify-center">
             <X size={13} />
           </button>
         </div>
@@ -806,7 +681,7 @@ function DebtSection() {
 
       <button
         onClick={() => addDebtPayment(blankDebt())}
-        className="w-full flex items-center gap-1.5 px-5 py-2.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border-t border-[var(--muted)] transition-colors"
+        className="w-full flex items-center gap-1.5 px-5 py-2.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border-t border-dashed border-[var(--border)] bg-white transition-colors"
       >
         <Plus size={11} /> add debt
       </button>
@@ -820,19 +695,22 @@ function SubscriptionsCard({ onManage }: { onManage: () => void }) {
   const total  = calculateSubscriptionGroupsMonthly(groups)
   const count  = groups.reduce((sum, g) => sum + g.subscriptions.length, 0)
   const active = groups.filter(g => g.subscriptions.length > 0)
-  const summary = active.length === 0
-    ? 'No subscriptions added yet'
-    : active.map(g => g.name).join(', ')
+  const summary = active.length === 0 ? 'No subscriptions added yet' : active.map(g => g.name).join(', ')
+  const isEmpty = total === 0
 
   return (
-    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl mb-2 overflow-hidden shadow-sm">
+    <div className="bg-white border border-[var(--border)] rounded-xl mb-2 overflow-hidden shadow-sm">
       <div className="flex items-center gap-2 px-3 py-2.5">
         <div className="flex border border-[var(--border)] rounded-full overflow-hidden opacity-40 flex-shrink-0">
-          <span className="px-2 py-0.5 text-[10px] font-medium bg-[var(--primary)] text-[var(--primary-foreground)]">F</span>
-          <span className="px-2 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">V</span>
+          <span className="px-2 py-0.5 text-[10px] font-semibold bg-[var(--primary)] text-white">F</span>
+          <span className="px-2 py-0.5 text-[10px] font-semibold text-[var(--muted-foreground)]">V</span>
         </div>
-        <span className="flex-1 text-sm font-medium text-[var(--foreground)]">Subscriptions & memberships</span>
-        <span className="text-sm font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(total)}</span>
+        <span className="flex-1 text-sm font-semibold text-[var(--foreground)]">Subscriptions & memberships</span>
+        <span className={`text-xs font-semibold font-[tabular-nums] px-2 py-0.5 rounded-full flex-shrink-0 ${
+          isEmpty ? 'text-[var(--muted-foreground)]' : 'bg-[#DDE6F5] text-[var(--primary)]'
+        }`}>
+          {formatCurrency(total)}
+        </span>
       </div>
       <button
         onClick={onManage}
@@ -849,7 +727,7 @@ function SubscriptionsCard({ onManage }: { onManage: () => void }) {
   )
 }
 
-// ── SubscriptionsModal — Fix 6 ────────────────────────────────
+// ── SubscriptionsModal ────────────────────────────────────────
 function SubscriptionsModal({ onClose }: { onClose: () => void }) {
   const groups                  = useFinStartStore(s => s.fixed_expenses.subscription_groups)
   const addSubscriptionGroup    = useFinStartStore(s => s.addSubscriptionGroup)
@@ -860,26 +738,21 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
   const removeSubscription      = useFinStartStore(s => s.removeSubscription)
 
   const total = calculateSubscriptionGroupsMonthly(groups)
-
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [groupDraft, setGroupDraft]         = useState('')
   const groupInputRef = useRef<HTMLInputElement>(null)
   const [newSubId, setNewSubId]             = useState<string | null>(null)
 
   useEffect(() => {
-    if (editingGroupId) {
-      groupInputRef.current?.focus()
-      groupInputRef.current?.select()
-    }
+    if (editingGroupId) { groupInputRef.current?.focus(); groupInputRef.current?.select() }
   }, [editingGroupId])
 
   function commitGroupName(id: string) {
-    const trimmed = groupDraft.trim()
-    if (trimmed) updateSubscriptionGroup(id, { name: trimmed })
+    const t = groupDraft.trim()
+    if (t) updateSubscriptionGroup(id, { name: t })
     setEditingGroupId(null)
   }
 
-  // Fix 6 — add group immediately enters edit mode with text selected
   function addGroup() {
     const id = newId()
     addSubscriptionGroup({ id, name: 'New group', subscriptions: [] })
@@ -898,12 +771,14 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--primary)]/40 p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] w-full max-w-xl max-h-[85vh] flex flex-col shadow-xl">
+      <div className="bg-white rounded-xl border border-[var(--border)] w-full max-w-xl max-h-[85vh] flex flex-col shadow-xl">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--border)] flex-shrink-0">
-          <span className="text-base font-medium text-[var(--foreground)]">Subscriptions & memberships</span>
+          <span className="text-base font-bold text-[var(--foreground)]" style={{ letterSpacing: '-0.4px' }}>
+            Subscriptions & memberships
+          </span>
           <div className="flex items-center gap-4">
             <span className="text-xs text-[var(--muted-foreground)]">
-              Total: <span className="text-[var(--foreground)] font-medium font-[tabular-nums]">{fmtLine(total)} / mo</span>
+              Total: <span className="text-[var(--foreground)] font-semibold font-[tabular-nums]">{fmtLine(total)} / mo</span>
             </span>
             <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
               <X size={16} />
@@ -913,47 +788,35 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex-1 overflow-y-auto">
           {groups.map(group => {
-            const groupTotal = group.subscriptions.reduce(
-              (sum, s) => sum + toMonthly(s.amount, s.frequency), 0
-            )
+            const groupTotal = group.subscriptions.reduce((sum, s) => sum + toMonthly(s.amount, s.frequency), 0)
             return (
               <div key={group.id} className="border-b border-[var(--border)] last:border-0">
-                {/* Fix 6 — pencil next to group name, auto-select on new */}
                 <div className="group/grp flex items-center gap-2 px-5 py-2 hover:bg-[var(--secondary)] transition-colors">
                   {editingGroupId === group.id ? (
                     <input
-                      ref={groupInputRef}
-                      value={groupDraft}
+                      ref={groupInputRef} value={groupDraft}
                       onChange={e => setGroupDraft(e.target.value)}
                       onBlur={() => commitGroupName(group.id)}
-                      onKeyDown={e => {
-                        // Fix 6 — Enter commits
-                        if (e.key === 'Enter') commitGroupName(group.id)
-                        if (e.key === 'Escape') setEditingGroupId(null)
-                      }}
-                      className="flex-1 text-xs font-medium uppercase tracking-wide bg-[var(--secondary)] border border-[var(--accent)] rounded px-1.5 py-0.5 outline-none text-[var(--foreground)]"
+                      onKeyDown={e => { if (e.key === 'Enter') commitGroupName(group.id); if (e.key === 'Escape') setEditingGroupId(null) }}
+                      className="flex-1 text-xs font-semibold uppercase tracking-wide bg-white border border-[var(--accent)] rounded px-1.5 py-0.5 outline-none text-[var(--foreground)]"
                     />
                   ) : (
                     <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[11px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide truncate">
+                      <span className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-wide truncate">
                         {group.name}
                       </span>
                       <button
                         onClick={() => { setGroupDraft(group.name); setEditingGroupId(group.id) }}
                         className="opacity-0 group-hover/grp:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--accent)] flex-shrink-0"
-                        title="Rename group"
                       >
                         <Pencil size={10} />
                       </button>
                     </div>
                   )}
-                  <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] flex-shrink-0">
-                    {fmtLine(groupTotal)} / mo
-                  </span>
+                  <span className="text-[11px] text-[var(--muted-foreground)] font-[tabular-nums] flex-shrink-0">{fmtLine(groupTotal)} / mo</span>
                   <button
                     onClick={() => removeSubscriptionGroup(group.id)}
                     className="opacity-0 group-hover/grp:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] p-0.5 flex-shrink-0"
-                    title="Remove group"
                   >
                     <X size={11} />
                   </button>
@@ -971,45 +834,24 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
                     {group.subscriptions.map(sub => {
                       const monthly = toMonthly(sub.amount, sub.frequency)
                       return (
-                        <div
-                          key={sub.id}
-                          className="group grid grid-cols-[1fr_72px_80px_60px_20px] gap-2 py-1.5 border-b border-[var(--muted)] last:border-0 items-center"
-                        >
+                        <div key={sub.id} className="group grid grid-cols-[1fr_72px_80px_60px_20px] gap-2 py-1.5 border-b border-[var(--muted)] last:border-0 items-center">
                           <input
                             autoFocus={sub.id === newSubId}
-                            type="text"
-                            value={sub.name}
-                            placeholder="Name"
-                            onChange={e => {
-                              updateSubscription(group.id, sub.id, { name: e.target.value })
-                              if (sub.id === newSubId) setNewSubId(null)
-                            }}
-                            // Fix 6 — Enter submits subscription name
+                            type="text" value={sub.name} placeholder="Name"
+                            onChange={e => { updateSubscription(group.id, sub.id, { name: e.target.value }); if (sub.id === newSubId) setNewSubId(null) }}
                             onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                            className="bg-[var(--secondary)] border border-transparent focus:border-[var(--accent)] focus:bg-[var(--card)] rounded px-1.5 py-1 text-xs outline-none text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] w-full transition-colors"
+                            className={textInputCls}
                           />
-                          <NumericInput
-                            value={sub.amount}
-                            onChange={v => updateSubscription(group.id, sub.id, { amount: v })}
-                            prefix="$"
-                            className="w-full text-xs"
-                          />
+                          <NumericInput value={sub.amount} onChange={v => updateSubscription(group.id, sub.id, { amount: v })} prefix="$" className="w-full" />
                           <select
                             value={sub.frequency}
                             onChange={e => updateSubscription(group.id, sub.id, { frequency: e.target.value as Subscription['frequency'] })}
-                            className="text-xs text-[var(--muted-foreground)] bg-[var(--secondary)] border-none rounded px-1 py-1 cursor-pointer outline-none w-full"
+                            className="text-xs text-[var(--muted-foreground)] bg-white border border-[var(--border)] rounded px-1 py-1 cursor-pointer outline-none w-full"
                           >
-                            {FREQ_OPTIONS.map(o => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
+                            {FREQ_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
-                          <span className="text-xs text-[var(--muted-foreground)] font-[tabular-nums] text-right">
-                            {fmtLine(monthly)}
-                          </span>
-                          <button
-                            onClick={() => removeSubscription(group.id, sub.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex items-center justify-center"
-                          >
+                          <span className="text-xs text-[var(--muted-foreground)] font-[tabular-nums] text-right">{fmtLine(monthly)}</span>
+                          <button onClick={() => removeSubscription(group.id, sub.id)} className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted-foreground)] hover:text-[var(--negative)] flex items-center justify-center">
                             <X size={11} />
                           </button>
                         </div>
@@ -1030,16 +872,10 @@ function SubscriptionsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex items-center justify-between px-5 py-3 border-t border-[var(--border)] flex-shrink-0">
-          <button
-            onClick={addGroup}
-            className="flex items-center gap-1.5 text-xs text-[var(--accent)] hover:text-[var(--foreground)] transition-colors"
-          >
+          <button onClick={addGroup} className="flex items-center gap-1.5 text-xs text-[var(--accent)] hover:text-[var(--foreground)] transition-colors">
             <Plus size={12} /> add group
           </button>
-          <button
-            onClick={onClose}
-            className="bg-[var(--primary)] text-[var(--primary-foreground)] text-xs px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity"
-          >
+          <button onClick={onClose} className="bg-[var(--primary)] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
             Done
           </button>
         </div>
@@ -1057,17 +893,32 @@ function AddCategoryButton({ isFixed }: { isFixed: boolean }) {
   return (
     <button
       onClick={add}
-      className="flex items-center gap-1.5 px-1 py-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] transition-colors"
+      className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--accent)] border border-dashed border-[var(--border)] rounded-lg w-full justify-center transition-colors mt-1"
     >
       <Plus size={11} /> add category
     </button>
   )
 }
 
+// ── Section header ────────────────────────────────────────────
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span
+        className="text-xs font-semibold uppercase tracking-widest"
+        style={{ color: 'var(--primary)', letterSpacing: '0.08em' }}
+      >
+        {title}
+      </span>
+      <div className="flex-1 h-px bg-[var(--border)]" />
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────
 export default function ExpensesPage() {
-  const fixed_expenses    = useFinStartStore(s => s.fixed_expenses)
-  const variable_expenses = useFinStartStore(s => s.variable_expenses)
+  const fixed_expenses           = useFinStartStore(s => s.fixed_expenses)
+  const variable_expenses        = useFinStartStore(s => s.variable_expenses)
   const updateExpenseCategoryRaw = useFinStartStore(s => s.updateExpenseCategory)
 
   const [showSubsModal, setShowSubsModal] = useState(false)
@@ -1083,10 +934,7 @@ export default function ExpensesPage() {
     },
     [updateExpenseCategoryRaw]
   )
-  // make wrapped version available to CategoryCard via store override pattern
-  // CategoryCard reads updateExpenseCategory directly from store — the flash
-  // is triggered by the page-level wrapper which CategoryCard calls via prop
-  void updateExpenseCategory // referenced below via CategoryCard's toggleFixed
+  void updateExpenseCategory
 
   const mortgageMonthly    = calculateMortgageMonthlyTotal(fixed_expenses.mortgage)
   const fixedCategories    = sortCategories(fixed_expenses.categories)
@@ -1100,55 +948,57 @@ export default function ExpensesPage() {
       {showSubsModal && <SubscriptionsModal onClose={() => setShowSubsModal(false)} />}
 
       <div className="p-6 max-w-5xl mx-auto">
-        {/* page header */}
-        <div className="mb-5">
-          <h1 className="text-xl font-medium text-[var(--foreground)]">Expenses</h1>
-          <p className="text-sm text-[var(--muted-foreground)] mt-0.5">
+        {/* Page header — brand spec: text-2xl font-bold letter-spacing -0.4px */}
+        <div className="mb-6">
+          <h1
+            className="text-2xl font-bold text-[var(--foreground)]"
+            style={{ letterSpacing: '-0.4px' }}
+          >
+            Expenses
+          </h1>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">
             Your monthly spending — hover any name and click the pencil to rename it
           </p>
         </div>
 
-        {/* summary bar */}
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl px-5 py-4 flex gap-0 mb-6 shadow-sm">
+        {/* Summary bar — Fixed in navy, Variable in steel blue */}
+        <div className="bg-white border border-[var(--border)] rounded-xl px-5 py-4 flex gap-0 mb-6 shadow-sm">
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Total monthly</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalExpenses)}</span>
+            <span className="text-2xl font-bold text-[var(--foreground)] font-[tabular-nums]" style={{ letterSpacing: '-0.4px' }}>
+              {formatCurrency(totalExpenses)}
+            </span>
           </div>
           <div className="w-px bg-[var(--border)] mx-5" />
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Fixed</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalFixed)}</span>
+            <span className="text-2xl font-bold font-[tabular-nums]" style={{ color: 'var(--primary)', letterSpacing: '-0.4px' }}>
+              {formatCurrency(totalFixed)}
+            </span>
           </div>
           <div className="w-px bg-[var(--border)] mx-5" />
           <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[11px] text-[var(--muted-foreground)] uppercase tracking-widest">Variable</span>
-            <span className="text-2xl font-medium text-[var(--foreground)] font-[tabular-nums]">{formatCurrency(totalVariable)}</span>
+            <span className="text-2xl font-bold font-[tabular-nums]" style={{ color: 'var(--accent)', letterSpacing: '-0.4px' }}>
+              {formatCurrency(totalVariable)}
+            </span>
           </div>
         </div>
 
-        {/* ── Debt & mortgage section — top, full width ── */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Debt</span>
-            <div className="flex-1 h-px bg-[var(--border)]" />
-          </div>
+        {/* Debt section */}
+        <div className="mb-8">
+          <SectionHeader title="Debt" />
           <MortgageSection />
           <DebtSection />
         </div>
 
-        {/* ── Fixed + Variable columns ── */}
+        {/* Fixed + Variable columns */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* LEFT — fixed */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Fixed</span>
-              <div className="flex-1 h-px bg-[var(--border)]" />
-            </div>
+            <SectionHeader title="Fixed" />
             {fixedCategories.map(cat => (
               <CategoryCard
-                key={cat.id}
-                category={cat}
-                flashId={flashId}
+                key={cat.id} category={cat} flashId={flashId}
                 mortgageMonthly={mortgageMonthly}
               />
             ))}
@@ -1156,17 +1006,11 @@ export default function ExpensesPage() {
             <AddCategoryButton isFixed={true} />
           </div>
 
-          {/* RIGHT — variable */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs font-medium text-[var(--foreground)] uppercase tracking-widest">Variable</span>
-              <div className="flex-1 h-px bg-[var(--border)]" />
-            </div>
+            <SectionHeader title="Variable" />
             {variableCategories.map(cat => (
               <CategoryCard
-                key={cat.id}
-                category={cat}
-                flashId={flashId}
+                key={cat.id} category={cat} flashId={flashId}
                 mortgageMonthly={mortgageMonthly}
               />
             ))}
