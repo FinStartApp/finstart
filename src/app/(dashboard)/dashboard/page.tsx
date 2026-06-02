@@ -419,36 +419,61 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {fixed_expenses.housing > 0 && (
+              {/* Show top categories by total, up to 4 lines */}
+              {[
+                ...fixed_expenses.categories.map(cat => ({
+                  label: cat.label,
+                  total: cat.items.reduce((sum, item) => {
+                    if (item.use_monthly_detail && item.monthly_amounts.some(v => v > 0)) {
+                      return sum + item.monthly_amounts.reduce((a, b) => a + b, 0) / 12
+                    }
+                    const freq = item.frequency
+                    const amt = item.amount
+                    if (freq === 'weekly') return sum + (amt * 52) / 12
+                    if (freq === 'biweekly') return sum + (amt * 26) / 12
+                    if (freq === 'quarterly') return sum + amt / 3
+                    if (freq === 'annual') return sum + amt / 12
+                    return sum + amt
+                  }, 0),
+                })),
+                ...variable_expenses.categories.map(cat => ({
+                  label: cat.label,
+                  total: cat.items.reduce((sum, item) => {
+                    if (item.use_monthly_detail && item.monthly_amounts.some(v => v > 0)) {
+                      return sum + item.monthly_amounts.reduce((a, b) => a + b, 0) / 12
+                    }
+                    const freq = item.frequency
+                    const amt = item.amount
+                    if (freq === 'weekly') return sum + (amt * 52) / 12
+                    if (freq === 'biweekly') return sum + (amt * 26) / 12
+                    if (freq === 'quarterly') return sum + amt / 3
+                    if (freq === 'annual') return sum + amt / 12
+                    return sum + amt
+                  }, 0),
+                })),
+              ]
+                .filter(c => c.total > 0)
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 4)
+                .map(cat => (
+                  <div key={cat.label} className="flex justify-between items-center">
+                    <span className="text-sm text-[var(--muted-foreground)]">{cat.label}</span>
+                    <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(cat.total)}</span>
+                  </div>
+                ))
+              }
+              {/* Mortgage line if active */}
+              {fixed_expenses.mortgage.is_active && fixed_expenses.mortgage.pi_payment > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-[var(--muted-foreground)]">Housing</span>
-                  <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(fixed_expenses.housing)}</span>
-                </div>
-              )}
-              {fixed_expenses.utilities > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[var(--muted-foreground)]">Utilities</span>
-                  <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(fixed_expenses.utilities)}</span>
-                </div>
-              )}
-              {(variable_expenses.groceries + variable_expenses.dining_takeout) > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[var(--muted-foreground)]">Food &amp; dining</span>
-                  <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(variable_expenses.groceries + variable_expenses.dining_takeout)}</span>
-                </div>
-              )}
-              {variable_expenses.auto_transportation > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[var(--muted-foreground)]">Auto &amp; transport</span>
-                  <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(variable_expenses.auto_transportation)}</span>
-                </div>
-              )}
-              {fixed_expenses.subscriptions_total_override > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[var(--muted-foreground)] flex items-center gap-1">
-                    Subscriptions <ChevronRight size={11} />
+                  <span className="text-sm text-[var(--muted-foreground)]">Mortgage</span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">
+                    {formatCurrency(
+                      fixed_expenses.mortgage.pi_payment +
+                      fixed_expenses.mortgage.escrow_taxes +
+                      fixed_expenses.mortgage.escrow_insurance +
+                      fixed_expenses.mortgage.escrow_pmi
+                    )}
                   </span>
-                  <span className="text-sm font-medium text-[var(--foreground)]">{formatCurrency(fixed_expenses.subscriptions_total_override)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t border-[var(--border)]">
