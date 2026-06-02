@@ -5,7 +5,8 @@ import type {
   SavingsAndInvestments,
   Asset,
   Liability,
-  Subscription,
+  ExpenseLineItem,
+  SubscriptionGroup,
   ForecastAssumptions,
   FilingStatus,
 } from '@/store/useFinStartStore'
@@ -28,14 +29,14 @@ export { US_STATES }
 
 export function toMonthly(amount: number, frequency: string): number {
   switch (frequency) {
-    case 'weekly':      return (amount * 52) / 12
-    case 'biweekly':    return (amount * 26) / 12
+    case 'weekly':       return (amount * 52) / 12
+    case 'biweekly':     return (amount * 26) / 12
     case 'semi_monthly': return amount * 2
-    case 'monthly':     return amount
-    case 'quarterly':   return amount / 3
-    case 'annual':      return amount / 12
-    case 'one_time':    return 0
-    default:            return amount
+    case 'monthly':      return amount
+    case 'quarterly':    return amount / 3
+    case 'annual':       return amount / 12
+    case 'one_time':     return 0
+    default:             return amount
   }
 }
 
@@ -45,8 +46,6 @@ export function toAnnual(amount: number, frequency: string): number {
 
 // ============================================================
 // FEDERAL INCOME TAX
-// Applies the correct standard deduction and bracket table
-// for the given filing status, then calculates tax owed.
 // ============================================================
 
 export function estimateFederalTax(
@@ -77,8 +76,7 @@ export function estimateFederalTax(
 }
 
 // ============================================================
-// ADDITIONAL MEDICARE THRESHOLD — by filing status
-// Returns the income threshold above which the 0.9% surtax applies
+// ADDITIONAL MEDICARE THRESHOLD
 // ============================================================
 
 function getAdditionalMedicareThreshold(filing_status: FilingStatus): number {
@@ -92,20 +90,7 @@ function getAdditionalMedicareThreshold(filing_status: FilingStatus): number {
 }
 
 // ============================================================
-// EARNER CALCULATION — Full gross to net breakdown
-//
-// HOW MFJ FEDERAL TAX WORKS HERE:
-// For married filing jointly, federal income tax cannot be
-// calculated on each earner independently. The correct approach
-// is to combine both earners' taxable incomes, calculate one
-// federal tax on the combined total, then split it back to each
-// earner proportionally based on their share of combined taxable
-// income. This is handled in calculateHouseholdIncome below.
-//
-// calculateEarner() returns a federal_tax_monthly of 0 for MFJ
-// earners — the real federal tax is injected by calculateHouseholdIncome
-// after it runs the combined calculation. All other taxes
-// (state, FICA) are correctly calculated per-earner here.
+// EARNER CALCULATION
 // ============================================================
 
 export interface EarnerTaxBreakdown {
@@ -140,12 +125,9 @@ export function calculateEarner(
   earner: Earner,
   state_code: string,
   filing_status: FilingStatus = 'single',
-  // For MFJ: pass the pre-calculated federal tax allocated to this earner.
-  // For all other filing statuses: leave undefined and it calculates here.
   override_federal_tax_annual?: number
 ): EarnerCalculation {
 
-  // --- Step 1: Gross income ---
   let gross_annual = 0
   if (earner.employment_type === 'hourly') {
     gross_annual = earner.hourly_rate * earner.hours_per_week * 52
@@ -154,12 +136,10 @@ export function calculateEarner(
   }
   const gross_monthly = gross_annual / 12
 
-  // --- Step 2: Bonus — taxed at supplemental rate ---
   const bonus_annual = earner.bonus.has_bonus ? earner.bonus.gross_annual_bonus : 0
   const bonus_monthly = bonus_annual / 12
   const bonus_tax_monthly = bonus_monthly * BONUS_SUPPLEMENTAL_RATE
 
-  // --- Step 3: Pre-tax deductions (monthly) ---
   const d = earner.pre_tax_deductions
 
   const traditional_monthly =
@@ -183,16 +163,13 @@ export function calculateEarner(
     fsa_monthly +
     d.other_pretax
 
-  // --- Step 4: Post-tax deductions ---
   const posttax_deductions_monthly =
     earner.post_tax_deductions.other_posttax + roth_monthly
 
-  // --- Step 5: Pension employee contribution ---
   const pension_contribution_monthly = earner.pension.has_pension
     ? (gross_monthly * earner.pension.employee_contribution_percent) / 100
     : 0
 
-  // --- Step 6: Employer 401k match ---
   const effective_contribution_percent =
     d.retirement_type === 'both'
       ? d.retirement401k_traditional_percent + d.retirement401k_roth_percent
@@ -210,26 +187,18 @@ export function calculateEarner(
   const total_401k_traditional_annual = traditional_monthly * 12
   const total_401k_roth_annual = roth_monthly * 12
 
-  // --- Step 7: Taxable income ---
-  // Only traditional 401k and pre-tax deductions reduce federal taxable income.
-  // Roth 401k is post-tax — does NOT reduce taxable income.
   const taxable_income_annual = gross_annual - pretax_deductions_monthly * 12
 
-  // --- Step 8: Federal income tax ---
-  // MFJ: uses the override value calculated in calculateHouseholdIncome.
-  // All other statuses: calculated individually here.
   const federal_tax_annual =
     override_federal_tax_annual !== undefined
       ? override_federal_tax_annual
       : estimateFederalTax(taxable_income_annual, filing_status)
   const federal_tax_monthly = federal_tax_annual / 12
 
-  // --- Step 9: State income tax (always per-earner) ---
   const state_rate = STATE_TAX_RATES[state_code] ?? 0
   const state_tax_annual = taxable_income_annual * state_rate
   const state_tax_monthly = state_tax_annual / 12
 
-  // --- Step 10: FICA (always per-earner — employer withholds per W-2) ---
   const social_security_annual =
     Math.min(gross_annual, FICA.ss_wage_base) * FICA.ss_rate
   const social_security_monthly = social_security_annual / 12
@@ -237,7 +206,6 @@ export function calculateEarner(
   const medicare_annual = gross_annual * FICA.medicare_rate
   const medicare_monthly = medicare_annual / 12
 
-  // Additional Medicare uses the correct threshold for this filing status
   const medicare_threshold = getAdditionalMedicareThreshold(filing_status)
   const additional_medicare_annual =
     gross_annual > medicare_threshold
@@ -261,7 +229,6 @@ export function calculateEarner(
     total_tax_monthly,
   }
 
-  // --- Step 11: Net take-home ---
   const net_monthly_take_home = Math.max(
     0,
     gross_monthly +
@@ -273,7 +240,6 @@ export function calculateEarner(
       bonus_tax_monthly
   )
 
-  // --- Step 12: Estimated pension at retirement ---
   const estimated_pension_monthly_at_retirement =
     earner.pension.has_pension ? estimatePensionPayment(earner) : 0
 
@@ -299,7 +265,6 @@ export function calculateEarner(
 
 // ============================================================
 // PENSION ESTIMATE
-// Projects salary to retirement, calculates AFC, estimates benefit
 // ============================================================
 
 export function estimatePensionPayment(earner: Earner): number {
@@ -308,10 +273,7 @@ export function estimatePensionPayment(earner: Earner): number {
   const current_year = new Date().getFullYear()
   const birth_year = new Date(earner.date_of_birth).getFullYear()
   const current_age = current_year - birth_year
-  const years_to_retirement = Math.max(
-    0,
-    earner.target_retirement_age - current_age
-  )
+  const years_to_retirement = Math.max(0, earner.target_retirement_age - current_age)
 
   const first_contribution_year = earner.pension.first_contribution_year
   const years_of_service_at_retirement =
@@ -321,18 +283,14 @@ export function estimatePensionPayment(earner: Earner): number {
   if (years_of_service_at_retirement <= 0) return 0
 
   const growth_rate = earner.salary_growth_rate / 100
-
   const salary_at_retirement =
-    earner.gross_annual_salary *
-    Math.pow(1 + growth_rate, years_to_retirement)
+    earner.gross_annual_salary * Math.pow(1 + growth_rate, years_to_retirement)
 
-  // AFC = average of final 5 years of salary before retirement
   const afc_years = 5
   let afc_sum = 0
   for (let i = 0; i < afc_years; i++) {
     const years_back = years_to_retirement - i
-    afc_sum +=
-      earner.gross_annual_salary * Math.pow(1 + growth_rate, years_back)
+    afc_sum += earner.gross_annual_salary * Math.pow(1 + growth_rate, years_back)
   }
   const afc = afc_sum / afc_years
 
@@ -341,8 +299,6 @@ export function estimatePensionPayment(earner: Earner): number {
     (earner.pension.benefit_multiplier_percent / 100) *
     years_of_service_at_retirement
 
-  // Suppress unused variable warning — salary_at_retirement used for
-  // reference in future AFC refinement (full career average model)
   void salary_at_retirement
 
   return annual_pension / 12
@@ -350,20 +306,6 @@ export function estimatePensionPayment(earner: Earner): number {
 
 // ============================================================
 // HOUSEHOLD INCOME SUMMARY
-//
-// MFJ FEDERAL TAX LOGIC:
-// For married filing jointly, the IRS taxes the household as
-// a single unit — both incomes are combined, one tax is calculated
-// on the combined taxable income, then split back to each earner
-// proportionally by their share of total taxable income.
-//
-// This produces materially different (and correct) results vs.
-// calculating each earner independently with joint brackets,
-// which would apply the $30,000 standard deduction twice and
-// misallocate bracket thresholds.
-//
-// Single filers, MFS, and all other statuses: calculated
-// independently per earner (correct behavior for those statuses).
 // ============================================================
 
 export interface HouseholdIncomeSummary {
@@ -386,29 +328,20 @@ export function calculateHouseholdIncome(
   let earner_calculations: EarnerCalculation[]
 
   if (filing_status === 'married_jointly' && earners.length > 1) {
-    // --- MFJ with two earners: combined federal tax approach ---
-
-    // First pass: calculate each earner without federal tax to get
-    // their individual taxable incomes
     const pass1 = earners.map((e) =>
       calculateEarner(e, state_code, filing_status, 0)
     )
 
-    // Combine both taxable incomes into one number
     const combined_taxable_annual = pass1.reduce(
       (sum, e) => sum + e.taxable_income_annual,
       0
     )
 
-    // Calculate one federal tax on the combined household income
     const combined_federal_tax_annual = estimateFederalTax(
       combined_taxable_annual,
       'married_jointly'
     )
 
-    // Split the combined federal tax back to each earner proportionally.
-    // If earner 1 has 60% of combined taxable income, they get 60% of the tax.
-    // This is the most defensible allocation for paycheck-level display.
     const earner_federal_taxes = pass1.map((e) => {
       const share =
         combined_taxable_annual > 0
@@ -417,42 +350,32 @@ export function calculateHouseholdIncome(
       return combined_federal_tax_annual * share
     })
 
-    // Second pass: recalculate each earner with their allocated federal tax
     earner_calculations = earners.map((e, i) =>
       calculateEarner(e, state_code, filing_status, earner_federal_taxes[i])
     )
 
   } else {
-    // --- Single, MFS, or MFJ with only one earner ---
-    // Each earner's federal tax is calculated on their own income
     earner_calculations = earners.map((e) =>
       calculateEarner(e, state_code, filing_status)
     )
   }
 
   const total_gross_monthly = earner_calculations.reduce(
-    (sum, e) => sum + e.gross_monthly,
-    0
+    (sum, e) => sum + e.gross_monthly, 0
   )
   const total_gross_annual = total_gross_monthly * 12
   const total_net_monthly = earner_calculations.reduce(
-    (sum, e) => sum + e.net_monthly_take_home,
-    0
+    (sum, e) => sum + e.net_monthly_take_home, 0
   )
   const total_net_annual = total_net_monthly * 12
 
   const total_additional_income_monthly = earners.reduce((sum, earner) => {
-    return (
-      sum +
-      earner.additional_income.reduce((s, source) => {
-        return s + toMonthly(source.amount, source.frequency)
-      }, 0)
-    )
+    return sum + earner.additional_income.reduce((s, source) => {
+      return s + toMonthly(source.amount, source.frequency)
+    }, 0)
   }, 0)
 
-  const total_take_home_monthly =
-    total_net_monthly + total_additional_income_monthly
-
+  const total_take_home_monthly = total_net_monthly + total_additional_income_monthly
   const any_deductions_incomplete = earners.some((e) => !e.deductions_complete)
 
   return {
@@ -468,69 +391,68 @@ export function calculateHouseholdIncome(
 }
 
 // ============================================================
-// SUBSCRIPTION TOTALS
+// EXPENSE LINE ITEM — resolves monthly value
+// If the item has monthly detail enabled, averages the 12
+// monthly values. Otherwise converts amount + frequency.
 // ============================================================
 
-export function calculateSubscriptionMonthly(
-  subscriptions: Subscription[]
+export function resolveLineItemMonthly(item: ExpenseLineItem): number {
+  if (item.use_monthly_detail && item.monthly_amounts.length === 12) {
+    const sum = item.monthly_amounts.reduce((a, b) => a + b, 0)
+    return sum / 12
+  }
+  return toMonthly(item.amount, item.frequency)
+}
+
+// ============================================================
+// SUBSCRIPTION TOTALS — works on the new grouped structure
+// ============================================================
+
+export function calculateSubscriptionGroupsMonthly(
+  groups: SubscriptionGroup[]
 ): number {
-  return subscriptions.reduce((sum, sub) => {
-    return sum + toMonthly(sub.amount, sub.frequency)
+  return groups.reduce((groupSum, group) => {
+    return groupSum + group.subscriptions.reduce((subSum, sub) => {
+      return subSum + toMonthly(sub.amount, sub.frequency)
+    }, 0)
   }, 0)
 }
 
 // ============================================================
-// EXPENSE TOTALS
+// EXPENSE TOTALS — updated for new category + line item structure
 // ============================================================
 
 export function calculateFixedExpensesMonthly(fixed: FixedExpenses): number {
-  const subscription_total =
-    fixed.subscriptions.length > 0
-      ? calculateSubscriptionMonthly(fixed.subscriptions)
-      : fixed.subscriptions_total_override
+  // Sum all line items across all fixed categories
+  const categories_total = fixed.categories.reduce((catSum, category) => {
+    return catSum + category.items.reduce((itemSum, item) => {
+      return itemSum + resolveLineItemMonthly(item)
+    }, 0)
+  }, 0)
 
+  // Subscription groups
+  const subscription_total = calculateSubscriptionGroupsMonthly(
+    fixed.subscription_groups
+  )
+
+  // Debt payments — uses the actual monthly_payment (what user pays),
+  // not minimum_payment, for cash flow purposes
   const debt_total = fixed.debt_payments.reduce(
-    (sum, d) => sum + d.minimum_payment,
+    (sum, d) => sum + d.monthly_payment,
     0
   )
 
-  const custom_total = fixed.custom_fixed.reduce((sum, item) => {
-    return sum + toMonthly(item.amount, item.frequency)
-  }, 0)
-
-  return (
-    fixed.housing +
-    fixed.utilities +
-    fixed.internet_phone +
-    fixed.insurance +
-    subscription_total +
-    fixed.childcare_education +
-    debt_total +
-    custom_total
-  )
+  return categories_total + subscription_total + debt_total
 }
 
 export function calculateVariableExpensesMonthly(
   variable: VariableExpenses
 ): number {
-  const custom_total = variable.custom_variable.reduce((sum, item) => {
-    return sum + toMonthly(item.amount, item.frequency)
+  return variable.categories.reduce((catSum, category) => {
+    return catSum + category.items.reduce((itemSum, item) => {
+      return itemSum + resolveLineItemMonthly(item)
+    }, 0)
   }, 0)
-
-  return (
-    variable.groceries +
-    variable.dining_takeout +
-    variable.auto_transportation +
-    variable.health_medical +
-    variable.personal_care +
-    variable.clothing_shopping +
-    variable.entertainment_activities +
-    variable.travel_vacation +
-    variable.gifts_giving +
-    variable.pet_care +
-    variable.home_maintenance +
-    custom_total
-  )
 }
 
 export function calculateSavingsMonthly(
@@ -681,19 +603,11 @@ export function calculateForecast(
   let running_roth = retirement_roth_start
 
   const annual_traditional_contribution = earners.reduce((sum, e) => {
-    return (
-      sum +
-      (e.pre_tax_deductions.retirement401k_traditional_percent / 100) *
-        e.gross_annual_salary
-    )
+    return sum + (e.pre_tax_deductions.retirement401k_traditional_percent / 100) * e.gross_annual_salary
   }, 0)
 
   const annual_roth_contribution = earners.reduce((sum, e) => {
-    return (
-      sum +
-      (e.pre_tax_deductions.retirement401k_roth_percent / 100) *
-        e.gross_annual_salary
-    )
+    return sum + (e.pre_tax_deductions.retirement401k_roth_percent / 100) * e.gross_annual_salary
   }, 0)
 
   const pension_monthly = earners.reduce((sum, e) => {
@@ -715,59 +629,37 @@ export function calculateForecast(
     const is_retirement_year_earner2 =
       earner2_age !== null && earner2_age === earner2_retirement_age
 
-    const expense_multiplier = Math.pow(
-      1 + assumptions.inflation_rate / 100,
-      i
-    )
+    const expense_multiplier = Math.pow(1 + assumptions.inflation_rate / 100, i)
 
     let net_income: number
     let pension_income_monthly = 0
 
     if (all_retired) {
       const withdrawal_annual =
-        (running_traditional + running_roth) *
-        (assumptions.withdrawal_rate / 100)
+        (running_traditional + running_roth) * (assumptions.withdrawal_rate / 100)
       pension_income_monthly = pension_monthly
       net_income = withdrawal_annual + pension_monthly * 12
     } else {
-      const earner1_calc = calculateEarner(
-        earners[0],
-        state_code,
-        filing_status
-      )
+      const earner1_calc = calculateEarner(earners[0], state_code, filing_status)
       const earner1_multiplier = Math.pow(
-        1 + (earners[0]?.salary_growth_rate ?? 3.5) / 100,
-        i
+        1 + (earners[0]?.salary_growth_rate ?? 3.5) / 100, i
       )
-      let projected_income =
-        earner1_calc.net_monthly_take_home * 12 * earner1_multiplier
+      let projected_income = earner1_calc.net_monthly_take_home * 12 * earner1_multiplier
 
       if (earners.length > 1 && !earner2_retired) {
-        const earner2_calc = calculateEarner(
-          earners[1],
-          state_code,
-          filing_status
-        )
+        const earner2_calc = calculateEarner(earners[1], state_code, filing_status)
         const earner2_multiplier = Math.pow(
-          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100,
-          i
+          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100, i
         )
-        projected_income +=
-          earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
+        projected_income += earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
       }
 
       if (earner1_retired && earners.length > 1) {
-        const earner2_calc = calculateEarner(
-          earners[1],
-          state_code,
-          filing_status
-        )
+        const earner2_calc = calculateEarner(earners[1], state_code, filing_status)
         const earner2_multiplier = Math.pow(
-          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100,
-          i
+          1 + (earners[1]?.salary_growth_rate ?? 3.5) / 100, i
         )
-        projected_income =
-          earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
+        projected_income = earner2_calc.net_monthly_take_home * 12 * earner2_multiplier
       }
 
       net_income = projected_income
@@ -781,24 +673,20 @@ export function calculateForecast(
 
     if (all_retired) {
       const total_balance = running_traditional + running_roth
-      const withdrawal =
-        total_balance * (assumptions.withdrawal_rate / 100)
+      const withdrawal = total_balance * (assumptions.withdrawal_rate / 100)
       const traditional_ratio =
         total_balance > 0 ? running_traditional / total_balance : 0.7
       running_traditional = Math.max(
         0,
-        (running_traditional - withdrawal * traditional_ratio) *
-          (1 + return_rate)
+        (running_traditional - withdrawal * traditional_ratio) * (1 + return_rate)
       )
       running_roth = Math.max(
         0,
-        (running_roth - withdrawal * (1 - traditional_ratio)) *
-          (1 + return_rate)
+        (running_roth - withdrawal * (1 - traditional_ratio)) * (1 + return_rate)
       )
     } else {
       running_traditional =
-        running_traditional * (1 + return_rate) +
-        annual_traditional_contribution
+        running_traditional * (1 + return_rate) + annual_traditional_contribution
       running_roth =
         running_roth * (1 + return_rate) + annual_roth_contribution
     }

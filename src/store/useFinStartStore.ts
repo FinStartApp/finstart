@@ -14,22 +14,18 @@ export type RetirementAccountType = 'traditional' | 'roth' | 'both'
 
 // --- Pre-tax deductions ---
 export interface PreTaxDeductions {
-  // 401k
   retirement_type: RetirementAccountType
   retirement401k_traditional_percent: number
   retirement401k_roth_percent: number
   employer_match_percent: number
   employer_match_up_to_percent: number
-  // Insurance
   health_insurance: number
   dental: number
   vision: number
-  // HSA / FSA
   has_hsa: boolean
   hsa: number
   has_fsa: boolean
   fsa: number
-  // Other
   other_pretax: number
 }
 
@@ -83,57 +79,67 @@ export interface Earner {
   additional_income: AdditionalIncomeSource[]
 }
 
-// --- Expenses ---
+// ============================================================
+// EXPENSE TYPES
+// ============================================================
+
+// A single line item inside any expense category
 export interface ExpenseLineItem {
   id: string
   label: string
   amount: number
   frequency: Frequency
-  is_custom: boolean
+  // Optional monthly detail — 12 values, one per month (Jan=0 … Dec=11)
+  use_monthly_detail: boolean
+  monthly_amounts: number[]
 }
 
+// A single subscription inside a subscription group
 export interface Subscription {
   id: string
   name: string
   amount: number
   frequency: Frequency
-  category: string
 }
 
+// A named group of subscriptions (Streaming, Music, etc.)
+export interface SubscriptionGroup {
+  id: string
+  name: string
+  subscriptions: Subscription[]
+}
+
+// A debt entry — payment feeds P&L, min_payment feeds DTI calcs
 export interface DebtPayment {
   id: string
   label: string
-  minimum_payment: number
   balance: number
   interest_rate: number
+  monthly_payment: number      // what the user actually pays — feeds cash flow
+  minimum_payment: number      // lender minimum — used for DTI / debt payoff module
   type: 'mortgage' | 'auto' | 'student_loan' | 'credit_card' | 'other'
 }
 
+// A full expense category — works for both fixed and variable
+export interface ExpenseCategory {
+  id: string
+  label: string
+  is_fixed: boolean            // true = lives in Fixed column, false = Variable
+  items: ExpenseLineItem[]
+}
+
+// ============================================================
+// FIXED & VARIABLE EXPENSE STRUCTURES
+// ============================================================
+
 export interface FixedExpenses {
-  housing: number
-  utilities: number
-  internet_phone: number
-  insurance: number
-  subscriptions: Subscription[]
-  subscriptions_total_override: number
-  childcare_education: number
-  custom_fixed: ExpenseLineItem[]
+  categories: ExpenseCategory[]
+  subscription_groups: SubscriptionGroup[]
   debt_payments: DebtPayment[]
 }
 
 export interface VariableExpenses {
-  groceries: number
-  dining_takeout: number
-  auto_transportation: number
-  health_medical: number
-  personal_care: number
-  clothing_shopping: number
-  entertainment_activities: number
-  travel_vacation: number
-  gifts_giving: number
-  pet_care: number
-  home_maintenance: number
-  custom_variable: ExpenseLineItem[]
+  categories: ExpenseCategory[]
 }
 
 // --- Savings ---
@@ -213,7 +219,7 @@ export interface FinStartState {
   active_modules: ActiveModules
   module_data: Record<string, unknown>
 
-  // Actions
+  // Earner actions
   setHouseholdType: (type: HouseholdType) => void
   setFilingStatus: (status: FilingStatus) => void
   setStateOfResidence: (state: string) => void
@@ -222,27 +228,73 @@ export interface FinStartState {
   updateEarner: (id: string, updates: Partial<Earner>) => void
   removeEarner: (id: string) => void
   removeSecondEarner: () => void
-  updateFixedExpenses: (updates: Partial<FixedExpenses>) => void
-  updateVariableExpenses: (updates: Partial<VariableExpenses>) => void
-  addSubscription: (subscription: Subscription) => void
-  updateSubscription: (id: string, updates: Partial<Subscription>) => void
-  removeSubscription: (id: string) => void
-  addCustomFixedExpense: (item: ExpenseLineItem) => void
-  removeCustomFixedExpense: (id: string) => void
-  addCustomVariableExpense: (item: ExpenseLineItem) => void
-  removeCustomVariableExpense: (id: string) => void
+
+  // Expense category actions
+  addExpenseCategory: (category: ExpenseCategory) => void
+  updateExpenseCategory: (id: string, updates: Partial<Pick<ExpenseCategory, 'label' | 'is_fixed'>>) => void
+  removeExpenseCategory: (id: string) => void
+
+  // Line item actions
+  addExpenseLineItem: (categoryId: string, item: ExpenseLineItem) => void
+  updateExpenseLineItem: (categoryId: string, itemId: string, updates: Partial<ExpenseLineItem>) => void
+  removeExpenseLineItem: (categoryId: string, itemId: string) => void
+
+  // Subscription group actions
+  addSubscriptionGroup: (group: SubscriptionGroup) => void
+  updateSubscriptionGroup: (groupId: string, updates: Partial<Pick<SubscriptionGroup, 'name'>>) => void
+  removeSubscriptionGroup: (groupId: string) => void
+
+  // Subscription actions
+  addSubscription: (groupId: string, subscription: Subscription) => void
+  updateSubscription: (groupId: string, subId: string, updates: Partial<Subscription>) => void
+  removeSubscription: (groupId: string, subId: string) => void
+
+  // Debt payment actions
+  addDebtPayment: (debt: DebtPayment) => void
+  updateDebtPayment: (id: string, updates: Partial<DebtPayment>) => void
+  removeDebtPayment: (id: string) => void
+
+  // Savings actions
   updateSavingsAndInvestments: (updates: Partial<SavingsAndInvestments>) => void
   addSavingsGoal: (goal: SavingsGoal) => void
   removeSavingsGoal: (id: string) => void
+
+  // Balance sheet actions
   addAsset: (asset: Asset) => void
   updateAsset: (id: string, updates: Partial<Asset>) => void
   removeAsset: (id: string) => void
   addLiability: (liability: Liability) => void
   updateLiability: (id: string, updates: Partial<Liability>) => void
   removeLiability: (id: string) => void
+
+  // Forecast / module actions
   updateForecastAssumptions: (updates: Partial<ForecastAssumptions>) => void
   toggleModule: (moduleId: ModuleId) => void
   setModuleData: (moduleId: string, data: unknown) => void
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function makeLineItem(label: string): ExpenseLineItem {
+  return {
+    id: crypto.randomUUID(),
+    label,
+    amount: 0,
+    frequency: 'monthly',
+    use_monthly_detail: false,
+    monthly_amounts: Array(12).fill(0),
+  }
+}
+
+function makeCategory(label: string, is_fixed: boolean, itemLabels: string[] = []): ExpenseCategory {
+  return {
+    id: crypto.randomUUID(),
+    label,
+    is_fixed,
+    items: itemLabels.map(makeLineItem),
+  }
 }
 
 // ============================================================
@@ -306,31 +358,49 @@ export function createDefaultEarner(id: string, label: string): Earner {
   }
 }
 
+// Default fixed expense categories
+const defaultFixedCategories: ExpenseCategory[] = [
+  makeCategory('Housing', true, ['Mortgage (P&I) + Escrow', 'House maintenance', 'Renovations', 'House cleaning']),
+  makeCategory('Insurance', true, ['Car insurance', 'Life insurance']),
+  makeCategory('Utilities', true, ['Cell phone', 'Internet', 'Utilities']),
+  makeCategory('Children & education', true, ['Preschool / daycare', 'Babysitter', 'Extracurriculars']),
+  makeCategory('Giving & donations', true, ['Church / tithe', 'Charitable giving']),
+]
+
+// Default variable expense categories
+const defaultVariableCategories: ExpenseCategory[] = [
+  makeCategory('Food & groceries', false, ['Groceries', 'Fast food']),
+  makeCategory('Dining & takeout', false, ['Restaurants', 'Delivery apps']),
+  makeCategory('Shopping', false, ['General spending', 'Large purchases']),
+  makeCategory('Entertainment', false, ['Events & activities', 'In-app purchases']),
+  makeCategory('Medical & health', false, ['Doctor visits', 'Pharmacy', 'Gym membership']),
+  makeCategory('Auto & transportation', false, ['Gas', 'Car maintenance', 'Registration']),
+  makeCategory('Personal care', false, ['Hair & grooming', 'Nails']),
+  makeCategory('Pets', false, ['Pet food', 'Vet', 'Grooming']),
+  makeCategory('Travel & vacation', false, ['Vacation budget']),
+  makeCategory('Gifts & celebrations', false, ['Birthday gifts', 'Christmas', 'Anniversaries']),
+]
+
+// Default subscription groups
+const defaultSubscriptionGroups: SubscriptionGroup[] = [
+  { id: crypto.randomUUID(), name: 'Streaming', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Music', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Gaming', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Health & fitness', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Cloud storage', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'News & reading', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Home & security', subscriptions: [] },
+  { id: crypto.randomUUID(), name: 'Other services', subscriptions: [] },
+]
+
 const defaultFixedExpenses: FixedExpenses = {
-  housing: 0,
-  utilities: 0,
-  internet_phone: 0,
-  insurance: 0,
-  subscriptions: [],
-  subscriptions_total_override: 0,
-  childcare_education: 0,
-  custom_fixed: [],
+  categories: defaultFixedCategories,
+  subscription_groups: defaultSubscriptionGroups,
   debt_payments: [],
 }
 
 const defaultVariableExpenses: VariableExpenses = {
-  groceries: 0,
-  dining_takeout: 0,
-  auto_transportation: 0,
-  health_medical: 0,
-  personal_care: 0,
-  clothing_shopping: 0,
-  entertainment_activities: 0,
-  travel_vacation: 0,
-  gifts_giving: 0,
-  pet_care: 0,
-  home_maintenance: 0,
-  custom_variable: [],
+  categories: defaultVariableCategories,
 }
 
 const defaultSavings: SavingsAndInvestments = {
@@ -348,12 +418,27 @@ const defaultForecastAssumptions: ForecastAssumptions = {
 }
 
 // ============================================================
+// HELPER — find which collection a category lives in
+// ============================================================
+
+function findCategory(state: FinStartState, id: string): {
+  collection: 'fixed' | 'variable'
+  index: number
+} | null {
+  const fi = state.fixed_expenses.categories.findIndex(c => c.id === id)
+  if (fi !== -1) return { collection: 'fixed', index: fi }
+  const vi = state.variable_expenses.categories.findIndex(c => c.id === id)
+  if (vi !== -1) return { collection: 'variable', index: vi }
+  return null
+}
+
+// ============================================================
 // THE STORE
 // ============================================================
 
 export const useFinStartStore = create<FinStartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       household_type: 'single_person',
       filing_status: 'single',
       state_of_residence: '',
@@ -368,128 +453,292 @@ export const useFinStartStore = create<FinStartState>()(
       active_modules: {},
       module_data: {},
 
+      // ── Household ──
       setHouseholdType: (type) => set({ household_type: type }),
       setFilingStatus: (status) => set({ filing_status: status }),
       setStateOfResidence: (state) => set({ state_of_residence: state }),
-      setNumberOfDependents: (count) =>
-        set({ number_of_dependents: count }),
+      setNumberOfDependents: (count) => set({ number_of_dependents: count }),
 
+      // ── Earners ──
       addEarner: (earner) =>
         set((state) => ({ earners: [...state.earners, earner] })),
 
       updateEarner: (id, updates) =>
         set((state) => ({
-          earners: state.earners.map((e) =>
-            e.id === id ? { ...e, ...updates } : e
-          ),
+          earners: state.earners.map((e) => e.id === id ? { ...e, ...updates } : e),
         })),
 
       removeEarner: (id) =>
-        set((state) => ({
-          earners: state.earners.filter((e) => e.id !== id),
-        })),
+        set((state) => ({ earners: state.earners.filter((e) => e.id !== id) })),
 
       removeSecondEarner: () =>
-        set((state) => ({
-          earners: state.earners.slice(0, 1),
-        })),
+        set((state) => ({ earners: state.earners.slice(0, 1) })),
 
-      updateFixedExpenses: (updates) =>
-        set((state) => ({
-          fixed_expenses: { ...state.fixed_expenses, ...updates },
-        })),
+      // ── Expense categories ──
+      addExpenseCategory: (category) =>
+        set((state) => {
+          if (category.is_fixed) {
+            return {
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: [...state.fixed_expenses.categories, category],
+              },
+            }
+          }
+          return {
+            variable_expenses: {
+              ...state.variable_expenses,
+              categories: [...state.variable_expenses.categories, category],
+            },
+          }
+        }),
 
-      updateVariableExpenses: (updates) =>
-        set((state) => ({
-          variable_expenses: { ...state.variable_expenses, ...updates },
-        })),
+      updateExpenseCategory: (id, updates) =>
+        set((state) => {
+          const loc = findCategory(state, id)
+          if (!loc) return {}
 
-      addSubscription: (subscription) =>
+          if (loc.collection === 'fixed') {
+            const categories = state.fixed_expenses.categories.map((c) =>
+              c.id === id ? { ...c, ...updates } : c
+            )
+            // If is_fixed changed to false, move it to variable
+            const updated = categories.find(c => c.id === id)!
+            if (updates.is_fixed === false) {
+              return {
+                fixed_expenses: {
+                  ...state.fixed_expenses,
+                  categories: state.fixed_expenses.categories.filter(c => c.id !== id),
+                },
+                variable_expenses: {
+                  ...state.variable_expenses,
+                  categories: [...state.variable_expenses.categories, { ...updated, is_fixed: false }],
+                },
+              }
+            }
+            return { fixed_expenses: { ...state.fixed_expenses, categories } }
+          }
+
+          // variable collection
+          const categories = state.variable_expenses.categories.map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          )
+          const updated = categories.find(c => c.id === id)!
+          if (updates.is_fixed === true) {
+            return {
+              variable_expenses: {
+                ...state.variable_expenses,
+                categories: state.variable_expenses.categories.filter(c => c.id !== id),
+              },
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: [...state.fixed_expenses.categories, { ...updated, is_fixed: true }],
+              },
+            }
+          }
+          return { variable_expenses: { ...state.variable_expenses, categories } }
+        }),
+
+      removeExpenseCategory: (id) =>
+        set((state) => {
+          const loc = findCategory(state, id)
+          if (!loc) return {}
+          if (loc.collection === 'fixed') {
+            return {
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: state.fixed_expenses.categories.filter(c => c.id !== id),
+              },
+            }
+          }
+          return {
+            variable_expenses: {
+              ...state.variable_expenses,
+              categories: state.variable_expenses.categories.filter(c => c.id !== id),
+            },
+          }
+        }),
+
+      // ── Line items ──
+      addExpenseLineItem: (categoryId, item) =>
+        set((state) => {
+          const loc = findCategory(state, categoryId)
+          if (!loc) return {}
+          if (loc.collection === 'fixed') {
+            return {
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: state.fixed_expenses.categories.map(c =>
+                  c.id === categoryId ? { ...c, items: [...c.items, item] } : c
+                ),
+              },
+            }
+          }
+          return {
+            variable_expenses: {
+              ...state.variable_expenses,
+              categories: state.variable_expenses.categories.map(c =>
+                c.id === categoryId ? { ...c, items: [...c.items, item] } : c
+              ),
+            },
+          }
+        }),
+
+      updateExpenseLineItem: (categoryId, itemId, updates) =>
+        set((state) => {
+          const loc = findCategory(state, categoryId)
+          if (!loc) return {}
+          const updateItems = (c: ExpenseCategory) =>
+            c.id === categoryId
+              ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, ...updates } : i) }
+              : c
+          if (loc.collection === 'fixed') {
+            return {
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: state.fixed_expenses.categories.map(updateItems),
+              },
+            }
+          }
+          return {
+            variable_expenses: {
+              ...state.variable_expenses,
+              categories: state.variable_expenses.categories.map(updateItems),
+            },
+          }
+        }),
+
+      removeExpenseLineItem: (categoryId, itemId) =>
+        set((state) => {
+          const loc = findCategory(state, categoryId)
+          if (!loc) return {}
+          const removeItem = (c: ExpenseCategory) =>
+            c.id === categoryId
+              ? { ...c, items: c.items.filter(i => i.id !== itemId) }
+              : c
+          if (loc.collection === 'fixed') {
+            return {
+              fixed_expenses: {
+                ...state.fixed_expenses,
+                categories: state.fixed_expenses.categories.map(removeItem),
+              },
+            }
+          }
+          return {
+            variable_expenses: {
+              ...state.variable_expenses,
+              categories: state.variable_expenses.categories.map(removeItem),
+            },
+          }
+        }),
+
+      // ── Subscription groups ──
+      addSubscriptionGroup: (group) =>
         set((state) => ({
           fixed_expenses: {
             ...state.fixed_expenses,
-            subscriptions: [
-              ...state.fixed_expenses.subscriptions,
-              subscription,
-            ],
+            subscription_groups: [...state.fixed_expenses.subscription_groups, group],
           },
         })),
 
-      updateSubscription: (id, updates) =>
+      updateSubscriptionGroup: (groupId, updates) =>
         set((state) => ({
           fixed_expenses: {
             ...state.fixed_expenses,
-            subscriptions: state.fixed_expenses.subscriptions.map((s) =>
-              s.id === id ? { ...s, ...updates } : s
+            subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
+              g.id === groupId ? { ...g, ...updates } : g
             ),
           },
         })),
 
-      removeSubscription: (id) =>
+      removeSubscriptionGroup: (groupId) =>
         set((state) => ({
           fixed_expenses: {
             ...state.fixed_expenses,
-            subscriptions: state.fixed_expenses.subscriptions.filter(
-              (s) => s.id !== id
+            subscription_groups: state.fixed_expenses.subscription_groups.filter(g => g.id !== groupId),
+          },
+        })),
+
+      // ── Subscriptions within a group ──
+      addSubscription: (groupId, subscription) =>
+        set((state) => ({
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
+              g.id === groupId
+                ? { ...g, subscriptions: [...g.subscriptions, subscription] }
+                : g
             ),
           },
         })),
 
-      addCustomFixedExpense: (item) =>
+      updateSubscription: (groupId, subId, updates) =>
         set((state) => ({
           fixed_expenses: {
             ...state.fixed_expenses,
-            custom_fixed: [...state.fixed_expenses.custom_fixed, item],
-          },
-        })),
-
-      removeCustomFixedExpense: (id) =>
-        set((state) => ({
-          fixed_expenses: {
-            ...state.fixed_expenses,
-            custom_fixed: state.fixed_expenses.custom_fixed.filter(
-              (i) => i.id !== id
+            subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
+              g.id === groupId
+                ? {
+                    ...g,
+                    subscriptions: g.subscriptions.map(s =>
+                      s.id === subId ? { ...s, ...updates } : s
+                    ),
+                  }
+                : g
             ),
           },
         })),
 
-      addCustomVariableExpense: (item) =>
+      removeSubscription: (groupId, subId) =>
         set((state) => ({
-          variable_expenses: {
-            ...state.variable_expenses,
-            custom_variable: [
-              ...state.variable_expenses.custom_variable,
-              item,
-            ],
-          },
-        })),
-
-      removeCustomVariableExpense: (id) =>
-        set((state) => ({
-          variable_expenses: {
-            ...state.variable_expenses,
-            custom_variable: state.variable_expenses.custom_variable.filter(
-              (i) => i.id !== id
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            subscription_groups: state.fixed_expenses.subscription_groups.map(g =>
+              g.id === groupId
+                ? { ...g, subscriptions: g.subscriptions.filter(s => s.id !== subId) }
+                : g
             ),
           },
         })),
 
+      // ── Debt payments ──
+      addDebtPayment: (debt) =>
+        set((state) => ({
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            debt_payments: [...state.fixed_expenses.debt_payments, debt],
+          },
+        })),
+
+      updateDebtPayment: (id, updates) =>
+        set((state) => ({
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            debt_payments: state.fixed_expenses.debt_payments.map(d =>
+              d.id === id ? { ...d, ...updates } : d
+            ),
+          },
+        })),
+
+      removeDebtPayment: (id) =>
+        set((state) => ({
+          fixed_expenses: {
+            ...state.fixed_expenses,
+            debt_payments: state.fixed_expenses.debt_payments.filter(d => d.id !== id),
+          },
+        })),
+
+      // ── Savings ──
       updateSavingsAndInvestments: (updates) =>
         set((state) => ({
-          savings_and_investments: {
-            ...state.savings_and_investments,
-            ...updates,
-          },
+          savings_and_investments: { ...state.savings_and_investments, ...updates },
         })),
 
       addSavingsGoal: (goal) =>
         set((state) => ({
           savings_and_investments: {
             ...state.savings_and_investments,
-            savings_goals: [
-              ...state.savings_and_investments.savings_goals,
-              goal,
-            ],
+            savings_goals: [...state.savings_and_investments.savings_goals, goal],
           },
         })),
 
@@ -497,51 +746,37 @@ export const useFinStartStore = create<FinStartState>()(
         set((state) => ({
           savings_and_investments: {
             ...state.savings_and_investments,
-            savings_goals:
-              state.savings_and_investments.savings_goals.filter(
-                (g) => g.id !== id
-              ),
+            savings_goals: state.savings_and_investments.savings_goals.filter(g => g.id !== id),
           },
         })),
 
+      // ── Balance sheet ──
       addAsset: (asset) =>
         set((state) => ({ assets: [...state.assets, asset] })),
 
       updateAsset: (id, updates) =>
         set((state) => ({
-          assets: state.assets.map((a) =>
-            a.id === id ? { ...a, ...updates } : a
-          ),
+          assets: state.assets.map(a => a.id === id ? { ...a, ...updates } : a),
         })),
 
       removeAsset: (id) =>
-        set((state) => ({
-          assets: state.assets.filter((a) => a.id !== id),
-        })),
+        set((state) => ({ assets: state.assets.filter(a => a.id !== id) })),
 
       addLiability: (liability) =>
-        set((state) => ({
-          liabilities: [...state.liabilities, liability],
-        })),
+        set((state) => ({ liabilities: [...state.liabilities, liability] })),
 
       updateLiability: (id, updates) =>
         set((state) => ({
-          liabilities: state.liabilities.map((l) =>
-            l.id === id ? { ...l, ...updates } : l
-          ),
+          liabilities: state.liabilities.map(l => l.id === id ? { ...l, ...updates } : l),
         })),
 
       removeLiability: (id) =>
-        set((state) => ({
-          liabilities: state.liabilities.filter((l) => l.id !== id),
-        })),
+        set((state) => ({ liabilities: state.liabilities.filter(l => l.id !== id) })),
 
+      // ── Forecast / modules ──
       updateForecastAssumptions: (updates) =>
         set((state) => ({
-          forecast_assumptions: {
-            ...state.forecast_assumptions,
-            ...updates,
-          },
+          forecast_assumptions: { ...state.forecast_assumptions, ...updates },
         })),
 
       toggleModule: (moduleId) =>
@@ -554,10 +789,7 @@ export const useFinStartStore = create<FinStartState>()(
 
       setModuleData: (moduleId, data) =>
         set((state) => ({
-          module_data: {
-            ...state.module_data,
-            [moduleId]: data,
-          },
+          module_data: { ...state.module_data, [moduleId]: data },
         })),
     }),
     {
