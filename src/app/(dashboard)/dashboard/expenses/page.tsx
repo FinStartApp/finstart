@@ -173,7 +173,13 @@ function MonthlyDetailPanel({
 
   function setMonth(i: number, val: number) {
     const next = [...item.monthly_amounts]; next[i] = val
-    updateExpenseLineItem(categoryId, item.id, { monthly_amounts: next })
+    // Only activate monthly detail mode when the user actually enters a value
+    // This prevents opening and closing the panel from wiping the standard amount/frequency
+    const hasAnyValue = next.some(v => v > 0)
+    updateExpenseLineItem(categoryId, item.id, {
+      monthly_amounts: next,
+      use_monthly_detail: hasAnyValue,
+    })
   }
 
   function clearDetail() {
@@ -231,7 +237,7 @@ function LineItemRow({
   const monthly         = resolveLineItemMonthly(item)
 
   function update(u: Partial<ExpenseLineItem>) { updateExpenseLineItem(categoryId, item.id, u) }
-  function togglePanel() { if (!item.use_monthly_detail) update({ use_monthly_detail: true }); setPanelOpen(p => !p) }
+  function togglePanel() { setPanelOpen(p => !p) }
 
   if (locked) {
     return (
