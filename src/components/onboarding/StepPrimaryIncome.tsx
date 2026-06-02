@@ -23,6 +23,50 @@ const PAY_FREQUENCIES = [
   { value: 'monthly', label: 'Monthly' },
 ]
 
+// Light blue = multi-option configuration (employment type, pay frequency, 401k type)
+// Dark navy = binary decisive choice (Yes/No, One/Two)
+function ConfigButton({ selected, onClick, children, className = '' }: {
+  selected: boolean
+  onClick: () => void
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-3 rounded-xl text-sm font-medium transition-all ${className}`}
+      style={{
+        border: selected ? '1.5px solid var(--primary)' : '0.5px solid var(--border)',
+        background: selected ? '#DDE6F5' : 'var(--card)',
+        color: 'var(--foreground)',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function DecisionButton({ selected, onClick, children, className = '' }: {
+  selected: boolean
+  onClick: () => void
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-3 rounded-xl text-sm font-semibold transition-all ${className}`}
+      style={{
+        border: selected ? '1.5px solid var(--primary)' : '0.5px solid var(--border)',
+        background: selected ? 'var(--primary)' : 'var(--card)',
+        color: selected ? 'white' : 'var(--foreground)',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function StepPrimaryIncome({ onNext, onBack }: Props) {
   const { earners, updateEarner } = useFinStartStore()
   const earner = earners[0]
@@ -35,10 +79,7 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
 
   function updateDeduction(field: string, value: number | boolean | string) {
     updateEarner(earner.id, {
-      pre_tax_deductions: {
-        ...earner.pre_tax_deductions,
-        [field]: value,
-      },
+      pre_tax_deductions: { ...earner.pre_tax_deductions, [field]: value },
     })
   }
 
@@ -49,19 +90,29 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
   const d = earner.pre_tax_deductions
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7">
+
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-[var(--foreground)] mb-2">
-          Your Income
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4"
+          style={{ background: '#EAF3DE' }}>
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#3B6D11' }} />
+          <span className="text-xs font-semibold" style={{ color: '#3B6D11' }}>
+            Your income
+          </span>
+        </div>
+        <h1 className="text-2xl font-bold text-[var(--foreground)] mb-2 leading-tight"
+          style={{ letterSpacing: '-0.4px' }}>
+          Let's figure out your take-home pay
         </h1>
-        <p className="text-[var(--muted-foreground)] text-base">
-          We'll calculate your take-home pay after taxes and deductions.
+        <p className="text-sm text-[var(--muted-foreground)] leading-relaxed">
+          We'll calculate exactly what lands in your bank account after taxes and deductions.
         </p>
       </div>
 
       {/* Name */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           Your Name
         </label>
         <input
@@ -69,13 +120,14 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
           value={earner.label}
           onChange={(e) => update('label', e.target.value)}
           placeholder="First name or nickname"
-          className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+          className="w-full px-4 py-3 rounded-xl text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] bg-[var(--card)] focus:outline-none transition-all"
+          style={{ border: '0.5px solid var(--border)' }}
         />
       </div>
 
       {/* Date of Birth */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           Date of Birth
         </label>
         <p className="text-xs text-[var(--muted-foreground)] -mt-1">
@@ -85,13 +137,14 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
           type="date"
           value={earner.date_of_birth}
           onChange={(e) => update('date_of_birth', e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+          className="w-full px-4 py-3 rounded-xl text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+          style={{ border: '0.5px solid var(--border)' }}
         />
       </div>
 
       {/* First Year of Work */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           First Year You Started Working
         </label>
         <p className="text-xs text-[var(--muted-foreground)] -mt-1">
@@ -101,34 +154,28 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
           type="number"
           value={earner.first_year_of_work || ''}
           onChange={(e) =>
-            update(
-              'first_year_of_work',
-              parseInt(e.target.value) || new Date().getFullYear()
-            )
+            update('first_year_of_work', parseInt(e.target.value) || new Date().getFullYear())
           }
           placeholder={String(new Date().getFullYear())}
-          className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+          className="w-full px-4 py-3 rounded-xl text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+          style={{ border: '0.5px solid var(--border)' }}
         />
       </div>
 
-      {/* Employment Type */}
-      <div className="space-y-3">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+      {/* Employment Type — config, light blue */}
+      <div className="space-y-2.5">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           Employment Type
         </label>
         <div className="grid grid-cols-2 gap-2">
           {EMPLOYMENT_TYPES.map((type) => (
-            <button
+            <ConfigButton
               key={type.value}
-              onClick={() => update('employment_type', type.value)}
-              className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                earner.employment_type === type.value
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                  : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/50'
-              }`}
+              selected={earner.employment_type === type.value}
+              onClick={() => update('employment_type', type.value as EmploymentType)}
             >
               {type.label}
-            </button>
+            </ConfigButton>
           ))}
         </div>
       </div>
@@ -137,89 +184,69 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
       {earner.employment_type === 'hourly' ? (
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+            <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
               Hourly Rate
             </label>
-            <CurrencyInput
-              value={earner.hourly_rate}
-              onChange={(val) => update('hourly_rate', val)}
-            />
+            <CurrencyInput value={earner.hourly_rate} onChange={(val) => update('hourly_rate', val)} />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+            <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
               Hours / Week
             </label>
             <input
               type="number"
               value={earner.hours_per_week || ''}
-              onChange={(e) =>
-                update('hours_per_week', parseFloat(e.target.value) || 0)
-              }
+              onChange={(e) => update('hours_per_week', parseFloat(e.target.value) || 0)}
               placeholder="40"
-              className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+              className="w-full px-4 py-3 rounded-xl text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+              style={{ border: '0.5px solid var(--border)' }}
             />
           </div>
         </div>
       ) : (
         <div className="space-y-2">
-          <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+          <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
             Gross Annual Salary
           </label>
           <p className="text-xs text-[var(--muted-foreground)] -mt-1">
             Total salary before taxes or deductions — not including bonuses
           </p>
-          <CurrencyInput
-            value={earner.gross_annual_salary}
-            onChange={(val) => update('gross_annual_salary', val)}
-          />
+          <CurrencyInput value={earner.gross_annual_salary} onChange={(val) => update('gross_annual_salary', val)} />
         </div>
       )}
 
-      {/* Pay Frequency */}
-      <div className="space-y-3">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+      {/* Pay Frequency — config, light blue */}
+      <div className="space-y-2.5">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           How Often Are You Paid?
         </label>
         <div className="grid grid-cols-2 gap-2">
           {PAY_FREQUENCIES.map((freq) => (
-            <button
+            <ConfigButton
               key={freq.value}
+              selected={earner.pay_frequency === freq.value}
               onClick={() => update('pay_frequency', freq.value)}
-              className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                earner.pay_frequency === freq.value
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                  : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/50'
-              }`}
             >
               {freq.label}
-            </button>
+            </ConfigButton>
           ))}
         </div>
       </div>
 
-      {/* Bonus */}
-      <div className="space-y-3">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+      {/* Bonus — binary, dark navy */}
+      <div className="space-y-2.5">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           Do you receive a bonus?
         </label>
         <div className="grid grid-cols-2 gap-2">
-          {[
-            { value: true, label: 'Yes' },
-            { value: false, label: 'No' },
-          ].map((opt) => (
-            <button
+          {[{ value: true, label: 'Yes' }, { value: false, label: 'No' }].map((opt) => (
+            <DecisionButton
               key={String(opt.value)}
-              onClick={() =>
-                update('bonus', { ...earner.bonus, has_bonus: opt.value })
-              }
-              className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                earner.bonus.has_bonus === opt.value
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                  : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/50'
-              }`}
+              selected={earner.bonus.has_bonus === opt.value}
+              onClick={() => update('bonus', { ...earner.bonus, has_bonus: opt.value })}
             >
               {opt.label}
-            </button>
+            </DecisionButton>
           ))}
         </div>
         {earner.bonus.has_bonus && (
@@ -229,22 +256,18 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
             </label>
             <CurrencyInput
               value={earner.bonus.gross_annual_bonus}
-              onChange={(val) =>
-                update('bonus', { ...earner.bonus, gross_annual_bonus: val })
-              }
+              onChange={(val) => update('bonus', { ...earner.bonus, gross_annual_bonus: val })}
             />
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Enter gross amount before taxes
-            </p>
+            <p className="text-xs text-[var(--muted-foreground)]">Enter gross amount before taxes</p>
           </div>
         )}
       </div>
 
-      {/* Deductions toggle */}
+      {/* Deductions toggle — binary, dark navy */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+            <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
               Paycheck Deductions
             </label>
             <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
@@ -253,26 +276,24 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() =>
-                updateEarner(earner.id, { deductions_complete: false })
-              }
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                !earner.deductions_complete
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                  : 'border-[var(--border)] text-[var(--muted-foreground)]'
-              }`}
+              onClick={() => updateEarner(earner.id, { deductions_complete: false })}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                border: !earner.deductions_complete ? '1.5px solid var(--primary)' : '0.5px solid var(--border)',
+                background: !earner.deductions_complete ? 'var(--primary)' : 'var(--card)',
+                color: !earner.deductions_complete ? 'white' : 'var(--foreground)',
+              }}
             >
               Fill in later
             </button>
             <button
-              onClick={() =>
-                updateEarner(earner.id, { deductions_complete: true })
-              }
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                earner.deductions_complete
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                  : 'border-[var(--border)] text-[var(--muted-foreground)]'
-              }`}
+              onClick={() => updateEarner(earner.id, { deductions_complete: true })}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                border: earner.deductions_complete ? '1.5px solid var(--primary)' : '0.5px solid var(--border)',
+                background: earner.deductions_complete ? 'var(--primary)' : 'var(--card)',
+                color: earner.deductions_complete ? 'white' : 'var(--foreground)',
+              }}
             >
               I have it
             </button>
@@ -280,58 +301,48 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
         </div>
 
         {!earner.deductions_complete && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-            <p className="text-xs text-amber-700">
-              That's okay — your take-home pay estimate will show on
-              your dashboard with a reminder to come back and add this
-              later.
+          <div className="rounded-xl px-4 py-3"
+            style={{ background: '#FEF3C7', border: '0.5px solid #FCD34D' }}>
+            <p className="text-xs" style={{ color: '#92400E' }}>
+              That's okay — your take-home pay estimate will show on your dashboard
+              with a reminder to come back and add this later.
             </p>
           </div>
         )}
 
         {earner.deductions_complete && (
           <div className="space-y-4">
-            {/* 401k type */}
+
+            {/* 401k type — config, light blue */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                401(k) Type
-              </label>
+              <label className="text-xs font-medium text-[var(--muted-foreground)]">401(k) Type</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { value: 'traditional', label: 'Traditional', hint: 'Pre-tax' },
                   { value: 'roth', label: 'Roth', hint: 'Post-tax' },
                   { value: 'both', label: 'Both', hint: 'Split' },
                 ].map((opt) => (
-                  <button
+                  <ConfigButton
                     key={opt.value}
+                    selected={d.retirement_type === opt.value}
                     onClick={() =>
                       updateEarner(earner.id, {
                         pre_tax_deductions: {
                           ...earner.pre_tax_deductions,
-                          retirement_type: opt.value as
-                            | 'traditional'
-                            | 'roth'
-                            | 'both',
+                          retirement_type: opt.value as 'traditional' | 'roth' | 'both',
                         },
                       })
                     }
-                    className={`px-3 py-2.5 rounded-lg border text-xs font-medium transition-all ${
-                      d.retirement_type === opt.value
-                        ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                        : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/50'
-                    }`}
+                    className="flex flex-col"
                   >
                     <div>{opt.label}</div>
-                    <div className="text-[var(--muted-foreground)] font-normal mt-0.5">
-                      {opt.hint}
-                    </div>
-                  </button>
+                    <div className="text-[var(--muted-foreground)] font-normal text-xs mt-0.5">{opt.hint}</div>
+                  </ConfigButton>
                 ))}
               </div>
             </div>
 
-            {(d.retirement_type === 'traditional' ||
-              d.retirement_type === 'both') && (
+            {(d.retirement_type === 'traditional' || d.retirement_type === 'both') && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--muted-foreground)]">
                   Traditional 401(k) — % of salary
@@ -340,24 +351,17 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
                   <input
                     type="number"
                     value={d.retirement401k_traditional_percent || ''}
-                    onChange={(e) =>
-                      updateDeduction(
-                        'retirement401k_traditional_percent',
-                        parseFloat(e.target.value) || 0
-                      )
-                    }
+                    onChange={(e) => updateDeduction('retirement401k_traditional_percent', parseFloat(e.target.value) || 0)}
                     placeholder="0"
-                    className="w-full pl-4 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                    className="w-full pl-4 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                    style={{ border: '0.5px solid var(--border)' }}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                    %
-                  </span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                 </div>
               </div>
             )}
 
-            {(d.retirement_type === 'roth' ||
-              d.retirement_type === 'both') && (
+            {(d.retirement_type === 'roth' || d.retirement_type === 'both') && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--muted-foreground)]">
                   Roth 401(k) — % of salary
@@ -366,18 +370,12 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
                   <input
                     type="number"
                     value={d.retirement401k_roth_percent || ''}
-                    onChange={(e) =>
-                      updateDeduction(
-                        'retirement401k_roth_percent',
-                        parseFloat(e.target.value) || 0
-                      )
-                    }
+                    onChange={(e) => updateDeduction('retirement401k_roth_percent', parseFloat(e.target.value) || 0)}
                     placeholder="0"
-                    className="w-full pl-4 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                    className="w-full pl-4 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                    style={{ border: '0.5px solid var(--border)' }}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                    %
-                  </span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                 </div>
               </div>
             )}
@@ -385,47 +383,31 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
             {/* Employer match */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                  Employer Match %
-                </label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">Employer Match %</label>
                 <div className="relative">
                   <input
                     type="number"
                     value={d.employer_match_percent || ''}
-                    onChange={(e) =>
-                      updateDeduction(
-                        'employer_match_percent',
-                        parseFloat(e.target.value) || 0
-                      )
-                    }
+                    onChange={(e) => updateDeduction('employer_match_percent', parseFloat(e.target.value) || 0)}
                     placeholder="0"
-                    className="w-full pl-4 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                    className="w-full pl-4 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                    style={{ border: '0.5px solid var(--border)' }}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                    %
-                  </span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                  Up To % of Salary
-                </label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">Up To % of Salary</label>
                 <div className="relative">
                   <input
                     type="number"
                     value={d.employer_match_up_to_percent || ''}
-                    onChange={(e) =>
-                      updateDeduction(
-                        'employer_match_up_to_percent',
-                        parseFloat(e.target.value) || 0
-                      )
-                    }
+                    onChange={(e) => updateDeduction('employer_match_up_to_percent', parseFloat(e.target.value) || 0)}
                     placeholder="100"
-                    className="w-full pl-4 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                    className="w-full pl-4 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                    style={{ border: '0.5px solid var(--border)' }}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                    %
-                  </span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                 </div>
               </div>
             </div>
@@ -439,9 +421,7 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
                 { field: 'other_pretax', label: 'Other Pre-Tax' },
               ].map(({ field, label }) => (
                 <div key={field} className="space-y-1.5">
-                  <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                    {label}
-                  </label>
+                  <label className="text-xs font-medium text-[var(--muted-foreground)]">{label}</label>
                   <CurrencyInput
                     value={(d as never)[field] || 0}
                     onChange={(val) => updateDeduction(field, val)}
@@ -456,29 +436,20 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
                 <input
                   type="checkbox"
                   checked={d.has_hsa}
-                  onChange={(e) =>
-                    updateDeduction('has_hsa', e.target.checked)
-                  }
+                  onChange={(e) => updateDeduction('has_hsa', e.target.checked)}
                   className="rounded"
                 />
                 <span className="text-sm font-medium text-[var(--foreground)]">
                   I contribute to an HSA through my paycheck
                 </span>
-                <span className="text-xs text-[var(--muted-foreground)]">
-                  (Health Savings Account — pre-tax)
-                </span>
+                <span className="text-xs text-[var(--muted-foreground)]">(Health Savings Account — pre-tax)</span>
               </label>
               {d.has_hsa && (
                 <div className="space-y-1.5">
-                  <CurrencyInput
-                    value={d.hsa}
-                    onChange={(val) => updateDeduction('hsa', val)}
-                    placeholder="Per paycheck amount"
-                  />
+                  <CurrencyInput value={d.hsa} onChange={(val) => updateDeduction('hsa', val)} placeholder="Per paycheck amount" />
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    Paycheck deductions only. If you transfer to your HSA
-                    directly from your bank, do not include that here —
-                    add it under Expenses instead to avoid double counting.
+                    Paycheck deductions only. If you transfer to your HSA directly from your bank,
+                    do not include that here — add it under Expenses instead to avoid double counting.
                   </p>
                 </div>
               )}
@@ -490,28 +461,20 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
                 <input
                   type="checkbox"
                   checked={d.has_fsa}
-                  onChange={(e) =>
-                    updateDeduction('has_fsa', e.target.checked)
-                  }
+                  onChange={(e) => updateDeduction('has_fsa', e.target.checked)}
                   className="rounded"
                 />
                 <span className="text-sm font-medium text-[var(--foreground)]">
                   I contribute to an FSA through my paycheck
                 </span>
-                <span className="text-xs text-[var(--muted-foreground)]">
-                  (Flexible Spending Account — pre-tax)
-                </span>
+                <span className="text-xs text-[var(--muted-foreground)]">(Flexible Spending Account — pre-tax)</span>
               </label>
               {d.has_fsa && (
                 <div className="space-y-1.5">
-                  <CurrencyInput
-                    value={d.fsa}
-                    onChange={(val) => updateDeduction('fsa', val)}
-                    placeholder="Per paycheck amount"
-                  />
+                  <CurrencyInput value={d.fsa} onChange={(val) => updateDeduction('fsa', val)} placeholder="Per paycheck amount" />
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    Paycheck deductions only. FSA funds are use-it-or-lose-it
-                    — only include what comes out of your paycheck here.
+                    Paycheck deductions only. FSA funds are use-it-or-lose-it —
+                    only include what comes out of your paycheck here.
                   </p>
                 </div>
               )}
@@ -519,155 +482,92 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
 
             {/* Post-tax */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                Other Post-Tax Deductions
-              </label>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Gym membership, parking, charity, etc. — per paycheck
-              </p>
+              <label className="text-xs font-medium text-[var(--muted-foreground)]">Other Post-Tax Deductions</label>
+              <p className="text-xs text-[var(--muted-foreground)]">Gym membership, parking, charity, etc. — per paycheck</p>
               <CurrencyInput
                 value={earner.post_tax_deductions.other_posttax}
-                onChange={(val) =>
-                  updateEarner(earner.id, {
-                    post_tax_deductions: { other_posttax: val },
-                  })
-                }
+                onChange={(val) => updateEarner(earner.id, { post_tax_deductions: { other_posttax: val } })}
               />
             </div>
 
-            {/* Pension */}
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+            {/* Pension — binary, dark navy */}
+            <div className="space-y-2.5">
+              <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
                 Do you have a pension?
               </label>
               <p className="text-xs text-[var(--muted-foreground)] -mt-1">
-                A pension is a retirement benefit paid by your employer
-                based on your years of service and salary
+                A pension is a retirement benefit paid by your employer based on your years of service and salary
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {[
-                  { value: true, label: 'Yes' },
-                  { value: false, label: 'No' },
-                ].map((opt) => (
-                  <button
+                {[{ value: true, label: 'Yes' }, { value: false, label: 'No' }].map((opt) => (
+                  <DecisionButton
                     key={String(opt.value)}
-                    onClick={() =>
-                      update('pension', {
-                        ...earner.pension,
-                        has_pension: opt.value,
-                      })
-                    }
-                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
-                      earner.pension.has_pension === opt.value
-                        ? 'border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]'
-                        : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/50'
-                    }`}
+                    selected={earner.pension.has_pension === opt.value}
+                    onClick={() => update('pension', { ...earner.pension, has_pension: opt.value })}
                   >
                     {opt.label}
-                  </button>
+                  </DecisionButton>
                 ))}
               </div>
 
               {earner.pension.has_pension && (
-                <div className="space-y-3 bg-[var(--muted)]/40 rounded-xl p-4">
+                <div className="space-y-3 rounded-xl p-4"
+                  style={{ background: 'var(--secondary)', border: '0.5px solid var(--border)' }}>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                        First Year of Contribution
-                      </label>
+                      <label className="text-xs font-medium text-[var(--muted-foreground)]">First Year of Contribution</label>
                       <input
                         type="number"
                         value={earner.pension.first_contribution_year || ''}
-                        onChange={(e) =>
-                          update('pension', {
-                            ...earner.pension,
-                            first_contribution_year:
-                              parseInt(e.target.value) ||
-                              new Date().getFullYear(),
-                          })
-                        }
+                        onChange={(e) => update('pension', { ...earner.pension, first_contribution_year: parseInt(e.target.value) || new Date().getFullYear() })}
                         placeholder={String(new Date().getFullYear())}
-                        className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                        className="w-full px-3 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                        style={{ border: '0.5px solid var(--border)' }}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                        Benefit Multiplier %
-                      </label>
+                      <label className="text-xs font-medium text-[var(--muted-foreground)]">Benefit Multiplier %</label>
                       <div className="relative">
                         <input
                           type="number"
-                          value={
-                            earner.pension.benefit_multiplier_percent || ''
-                          }
-                          onChange={(e) =>
-                            update('pension', {
-                              ...earner.pension,
-                              benefit_multiplier_percent:
-                                parseFloat(e.target.value) || 1.0,
-                            })
-                          }
+                          value={earner.pension.benefit_multiplier_percent || ''}
+                          onChange={(e) => update('pension', { ...earner.pension, benefit_multiplier_percent: parseFloat(e.target.value) || 1.0 })}
                           placeholder="1.0"
-                          className="w-full pl-3 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                          className="w-full pl-3 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                          style={{ border: '0.5px solid var(--border)' }}
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                          %
-                        </span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                       </div>
-                      <p className="text-xs text-[var(--muted-foreground)]">
-                        Common range: 1–2.5%. Check your plan documents.
-                      </p>
+                      <p className="text-xs text-[var(--muted-foreground)]">Common range: 1–2.5%. Check your plan documents.</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                        Your Contribution %
-                      </label>
+                      <label className="text-xs font-medium text-[var(--muted-foreground)]">Your Contribution %</label>
                       <div className="relative">
                         <input
                           type="number"
-                          value={
-                            earner.pension.employee_contribution_percent || ''
-                          }
-                          onChange={(e) =>
-                            update('pension', {
-                              ...earner.pension,
-                              employee_contribution_percent:
-                                parseFloat(e.target.value) || 0,
-                            })
-                          }
+                          value={earner.pension.employee_contribution_percent || ''}
+                          onChange={(e) => update('pension', { ...earner.pension, employee_contribution_percent: parseFloat(e.target.value) || 0 })}
                           placeholder="0"
-                          className="w-full pl-3 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                          className="w-full pl-3 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                          style={{ border: '0.5px solid var(--border)' }}
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                          %
-                        </span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                        Employer Contribution %
-                      </label>
+                      <label className="text-xs font-medium text-[var(--muted-foreground)]">Employer Contribution %</label>
                       <div className="relative">
                         <input
                           type="number"
-                          value={
-                            earner.pension.employer_contribution_percent || ''
-                          }
-                          onChange={(e) =>
-                            update('pension', {
-                              ...earner.pension,
-                              employer_contribution_percent:
-                                parseFloat(e.target.value) || 0,
-                            })
-                          }
+                          value={earner.pension.employer_contribution_percent || ''}
+                          onChange={(e) => update('pension', { ...earner.pension, employer_contribution_percent: parseFloat(e.target.value) || 0 })}
                           placeholder="0"
-                          className="w-full pl-3 pr-8 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+                          className="w-full pl-3 pr-8 py-2.5 rounded-lg text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+                          style={{ border: '0.5px solid var(--border)' }}
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">
-                          %
-                        </span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] text-xs">%</span>
                       </div>
                     </div>
                   </div>
@@ -678,11 +578,11 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
         )}
       </div>
 
-      {/* Current Retirement Account Balances */}
+      {/* Retirement balances */}
       {earner.deductions_complete && (
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+            <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
               Current Retirement Account Balances
             </label>
             <p className="text-xs text-[var(--muted-foreground)] mt-1">
@@ -690,74 +590,66 @@ export default function StepPrimaryIncome({ onNext, onBack }: Props) {
               Used to project your retirement picture accurately.
             </p>
           </div>
-
-          <div className="space-y-3 bg-[var(--muted)]/40 rounded-xl p-4">
-            {(d.retirement_type === 'traditional' ||
-              d.retirement_type === 'both') && (
+          <div className="space-y-3 rounded-xl p-4"
+            style={{ background: 'var(--secondary)', border: '0.5px solid var(--border)' }}>
+            {(d.retirement_type === 'traditional' || d.retirement_type === 'both') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                  Traditional 401(k) Current Balance
-                </label>
-                <CurrencyInput
-                  value={earner.balance_401k_traditional}
-                  onChange={(val) => update('balance_401k_traditional', val)}
-                />
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">Traditional 401(k) Current Balance</label>
+                <CurrencyInput value={earner.balance_401k_traditional} onChange={(val) => update('balance_401k_traditional', val)} />
               </div>
             )}
-
-            {(d.retirement_type === 'roth' ||
-              d.retirement_type === 'both') && (
+            {(d.retirement_type === 'roth' || d.retirement_type === 'both') && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--muted-foreground)]">
-                  Roth 401(k) Current Balance
-                </label>
-                <CurrencyInput
-                  value={earner.balance_401k_roth}
-                  onChange={(val) => update('balance_401k_roth', val)}
-                />
+                <label className="text-xs font-medium text-[var(--muted-foreground)]">Roth 401(k) Current Balance</label>
+                <CurrencyInput value={earner.balance_401k_roth} onChange={(val) => update('balance_401k_roth', val)} />
               </div>
             )}
           </div>
         </div>
       )}
+
       {/* Salary Growth Rate */}
-      <SalaryGrowthSlider
-        value={earner.salary_growth_rate}
-        onChange={(val) => update('salary_growth_rate', val)}
-      />
+      <SalaryGrowthSlider value={earner.salary_growth_rate} onChange={(val) => update('salary_growth_rate', val)} />
 
       {/* Target Retirement Age */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wider">
+        <label className="text-[11px] font-semibold text-[var(--muted-foreground)] uppercase tracking-widest">
           Target Retirement Age
         </label>
         <input
           type="number"
           value={earner.target_retirement_age || ''}
-          onChange={(e) =>
-            update('target_retirement_age', parseInt(e.target.value) || 65)
-          }
+          onChange={(e) => update('target_retirement_age', parseInt(e.target.value) || 65)}
           placeholder="65"
-          className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] transition-all text-sm"
+          className="w-full px-4 py-3 rounded-xl text-sm text-[var(--foreground)] bg-[var(--card)] focus:outline-none transition-all"
+          style={{ border: '0.5px solid var(--border)' }}
         />
       </div>
 
       {/* Navigation */}
-      <div className="flex gap-3">
-        <button
-          onClick={onBack}
-          className="flex-1 py-3.5 rounded-xl border border-[var(--border)] text-[var(--foreground)] font-semibold text-sm transition-all hover:bg-[var(--muted)]"
-        >
-          Back
-        </button>
-        <button
-          onClick={onNext}
-          disabled={!canContinue}
-          className="flex-2 flex-grow py-3.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] font-semibold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Continue
-        </button>
+      <div className="space-y-3 pt-1">
+        <div className="flex gap-3">
+          <button
+            onClick={onBack}
+            className="flex-1 py-3.5 rounded-xl font-semibold text-sm transition-all hover:opacity-80"
+            style={{ border: '0.5px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)' }}
+          >
+            Back
+          </button>
+          <button
+            onClick={onNext}
+            disabled={!canContinue}
+            className="flex-[2] py-3.5 rounded-xl font-semibold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'var(--primary)', color: 'white' }}
+          >
+            Continue →
+          </button>
+        </div>
+        <p className="text-xs text-[var(--muted-foreground)] text-center">
+          Your data stays on your device
+        </p>
       </div>
+
     </div>
   )
 }
